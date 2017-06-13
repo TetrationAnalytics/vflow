@@ -36,7 +36,7 @@ var (
 	logger *log.Logger
 )
 
-type proto interface {
+type protocol interface {
 	run()
 	shutdown()
 }
@@ -55,11 +55,11 @@ func main() {
 	ipfix := NewIPFIX()
 	netflow9 := NewNetflowV9()
 
-	protos := []proto{sFlow, ipfix, netflow9}
+	protocols := []protocol{sFlow, ipfix, netflow9}
 
-	for _, p := range protos {
+	for _, p := range protocols {
 		wg.Add(1)
-		go func(p proto) {
+		go func(p protocol) {
 			defer wg.Done()
 			p.run()
 		}(p)
@@ -69,9 +69,9 @@ func main() {
 
 	<-signalCh
 
-	for _, p := range protos {
+	for _, p := range protocols {
 		wg.Add(1)
-		go func(p proto) {
+		go func(p protocol) {
 			defer wg.Done()
 			p.shutdown()
 		}(p)

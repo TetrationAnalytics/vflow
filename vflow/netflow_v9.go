@@ -108,7 +108,7 @@ func (i *NetflowV9) run() {
 		}()
 	}
 
-	logger.Printf("netflow v9 is running (workers#: %d)", i.workers)
+	logger.Printf("netflow v9 is running (addr: %s, port#: %d, workers#: %d)", i.addr, i.port, i.workers)
 
 	mCacheNF9 = netflow9.GetCache(opts.NetflowV9TplCacheFile)
 
@@ -209,10 +209,20 @@ LOOP:
 		atomic.AddUint64(&i.stats.DecodedCount, 1)
 
 		if decodedMsg.DataSets != nil {
-			b, err = decodedMsg.JSONMarshal(buf)
-			if err != nil {
-				logger.Println(err)
-				continue
+			if opts.JSONFormatDump {
+
+				b, err = decodedMsg.JSONMarshal(buf)
+				if err != nil {
+					logger.Println(err)
+					continue
+				}
+			} else {
+				// dump the message in protobuf format
+				b, err = ProtoBufMarshal(decodedMsg)
+				if err != nil {
+					logger.Println(err)
+					continue
+				}
 			}
 
 			select {

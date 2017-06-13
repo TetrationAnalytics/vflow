@@ -112,7 +112,7 @@ func (i *IPFIX) run() {
 		}()
 	}
 
-	logger.Printf("ipfix is running (workers#: %d)", i.workers)
+	logger.Printf("ipfix is running (addr: %s, port#: %d, workers#: %d)", i.addr, i.port, i.workers)
 
 	mCache = ipfix.GetCache(opts.IPFIXTplCacheFile)
 	go ipfix.RPC(mCache, &ipfix.RPCConfig{

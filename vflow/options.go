@@ -81,6 +81,9 @@ type Options struct {
 	NetflowV9Topic        string `yaml:"netflow9-topic"`
 	NetflowV9TplCacheFile string `yaml:"netflow9-tpl-cache-file"`
 
+	// message format
+	JSONFormatDump   bool   `yaml:"json-format"`
+
 	// producer
 	MQName       string `yaml:"mq-name"`
 	MQConfigFile string `yaml:"mq-config-file"`
@@ -129,6 +132,8 @@ func NewOptions() *Options {
 		NetflowV9Topic:        "vflow.netflow9",
 		NetflowV9TplCacheFile: "/tmp/netflowv9.templates",
 
+		JSONFormatDump: true,
+		
 		MQName:       "kafka",
 		MQConfigFile: "/usr/local/vflow/etc/kafka.conf",
 	}

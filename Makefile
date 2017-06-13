@@ -1,5 +1,5 @@
 PACKAGES=$(shell find . -name '*.go' -print0 | xargs -0 -n1 dirname | sort --unique)
-GOFILES= vflow.go ipfix.go sflow.go netflow_v9.go options.go stats.go 
+GOFILES= vflow.go ipfix.go sflow.go netflow_v9.go options.go stats.go marshal_pb.go
 LDFLAGS= -ldflags "-X main.version=0.3.1"
 
 default: test
