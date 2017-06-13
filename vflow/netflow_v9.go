@@ -210,7 +210,7 @@ LOOP:
 
 		if decodedMsg.DataSets != nil {
 			if opts.JSONFormatDump {
-
+				logger.Println("Dumping in JSON format")
 				b, err = decodedMsg.JSONMarshal(buf)
 				if err != nil {
 					logger.Println(err)
@@ -218,6 +218,7 @@ LOOP:
 				}
 			} else {
 				// dump the message in protobuf format
+				logger.Println("Dumping in PROTOBUF format")
 				b, err = ProtoBufMarshal(decodedMsg)
 				if err != nil {
 					logger.Println(err)

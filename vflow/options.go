@@ -82,7 +82,7 @@ type Options struct {
 	NetflowV9TplCacheFile string `yaml:"netflow9-tpl-cache-file"`
 
 	// message format
-	JSONFormatDump   bool   `yaml:"json-format"`
+	JSONFormatDump bool `yaml:"json-format-dump"`
 
 	// producer
 	MQName       string `yaml:"mq-name"`
@@ -132,8 +132,8 @@ func NewOptions() *Options {
 		NetflowV9Topic:        "vflow.netflow9",
 		NetflowV9TplCacheFile: "/tmp/netflowv9.templates",
 
-		JSONFormatDump: true,
-		
+		JSONFormatDump: false,
+
 		MQName:       "kafka",
 		MQConfigFile: "/usr/local/vflow/etc/kafka.conf",
 	}
@@ -245,6 +245,9 @@ func (opts *Options) vFlowFlagSet() {
 	flag.StringVar(&opts.NetflowV9Topic, "netflow9-topic", opts.NetflowV9Topic, "Netflow version 9 topic name")
 	flag.StringVar(&opts.NetflowV9TplCacheFile, "netflow9-tpl-cache-file", opts.NetflowV9TplCacheFile, "Netflow version 9 template cache file")
 
+	// JSON format
+	flag.BoolVar(&opts.JSONFormatDump, "json-format-dump", opts.JSONFormatDump, "enable/disable JSON format dump")
+
 	// producer options
 	flag.StringVar(&opts.MQName, "mqueue", opts.MQName, "producer message queue name")
 	flag.StringVar(&opts.MQConfigFile, "mqueue-conf", opts.MQConfigFile, "producer message queue configuration file")
@@ -287,6 +290,7 @@ func vFlowLoadCfg(opts *Options) {
 		opts.Logger.Println(err)
 		return
 	}
+	opts.Logger.Println("Printing options", string(b[:]))
 	err = yaml.Unmarshal(b, opts)
 	if err != nil {
 		opts.Logger.Println(err)
