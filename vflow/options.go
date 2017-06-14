@@ -132,7 +132,7 @@ func NewOptions() *Options {
 		NetflowV9Topic:        "vflow.netflow9",
 		NetflowV9TplCacheFile: "/tmp/netflowv9.templates",
 
-		JSONFormatDump: false,
+		JSONFormatDump: true,
 
 		MQName:       "kafka",
 		MQConfigFile: "/usr/local/vflow/etc/kafka.conf",
