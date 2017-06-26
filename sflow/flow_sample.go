@@ -26,7 +26,7 @@ import (
 	"errors"
 	"io"
 
-	"github.com/TetrationAnaltics/vflow/packet"
+	"github.com/TetrationAnalytics/vflow/packet"
 )
 
 const (

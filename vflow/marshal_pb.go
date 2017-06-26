@@ -30,9 +30,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/tetration/vflow/netflow/v9"
+	"github.com/TetrationAnalytics/vflow/netflow/v9"
 	"github.com/golang/protobuf/proto"
-	SensorProto "github.com/tetration/vflow/vflow/protos/sensor"
+	SensorProto "github.com/TetrationAnalytics/vflow/vflow/protos/sensor"
 )
 
 // DumpFlowRecord prints the incoming netflow record

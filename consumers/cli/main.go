@@ -31,7 +31,7 @@ import (
 
 	cluster "github.com/bsm/sarama-cluster"
 	"github.com/golang/protobuf/proto"
-	SensorProto "github.com/tetration/vflow/vflow/protos/sensor"
+	SensorProto "github.com/TetrationAnalytics/vflow/vflow/protos/sensor"
 )
 
 type options struct {
