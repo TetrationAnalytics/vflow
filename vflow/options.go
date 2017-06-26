@@ -266,7 +266,7 @@ func (opts *Options) vFlowFlagSet() {
 	vflow -verbose=true
 
 	# for more information
-	https://github.com/VerizonDigital/vflow/blob/master/docs/config.md
+	https://github.com/TetrationAnalytics/vflow/blob/master/docs/config.md
 
     `)
 

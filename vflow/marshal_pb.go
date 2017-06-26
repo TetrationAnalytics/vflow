@@ -30,7 +30,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/VerizonDigital/vflow/netflow/v9"
+	"github.com/tetration/vflow/netflow/v9"
 	"github.com/golang/protobuf/proto"
 	SensorProto "github.com/tetration/vflow/vflow/protos/sensor"
 )
