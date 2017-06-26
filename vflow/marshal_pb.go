@@ -23,13 +23,93 @@
 package main
 
 import (
+	"bytes"
+	"encoding/hex"
 	"net"
+	"reflect"
+	"strconv"
+	"strings"
 
 	"github.com/VerizonDigital/vflow/netflow/v9"
 	"github.com/golang/protobuf/proto"
 	SensorProto "github.com/tetration/vflow/vflow/protos/sensor"
 )
 
+// DumpFlowRecord prints the incoming netflow record
+func DumpFlowRecord(m *netflow9.Message) error {
+	var (
+		b   bytes.Buffer
+		str string
+	)
+	// Dump agent info
+	b.WriteString("Agent ID: ")
+	b.WriteString(m.AgentID)
+	b.WriteString(", Version: ")
+	// Header
+	b.WriteString(strconv.FormatInt(int64(m.Header.Version), 10))
+	b.WriteByte('\n')
+	for i := range m.DataSets {
+		str = "\nFlow Record " + strconv.FormatInt(int64(i+1), 10) + ": \n"
+		b.WriteString(str)
+		for j := range m.DataSets[i] {
+			str = "Elem ID: " + strconv.FormatInt(int64(m.DataSets[i][j].ID), 10)
+			b.WriteString(str)
+			str = " Type: " + reflect.TypeOf(m.DataSets[i][j].Value).Name()
+			b.WriteString(str)
+			b.WriteString(" Value: ")
+			switch m.DataSets[i][j].Value.(type) {
+			case uint:
+				b.WriteString(strconv.FormatInt(int64(m.DataSets[i][j].Value.(uint)), 10))
+			case uint8:
+				b.WriteString(strconv.FormatInt(int64(m.DataSets[i][j].Value.(uint8)), 10))
+			case uint16:
+				b.WriteString(strconv.FormatInt(int64(m.DataSets[i][j].Value.(uint16)), 10))
+			case uint32:
+				b.WriteString(strconv.FormatInt(int64(m.DataSets[i][j].Value.(uint32)), 10))
+			case uint64:
+				b.WriteString(strconv.FormatInt(int64(m.DataSets[i][j].Value.(uint64)), 10))
+			case int:
+				b.WriteString(strconv.FormatInt(int64(m.DataSets[i][j].Value.(int)), 10))
+			case int8:
+				b.WriteString(strconv.FormatInt(int64(m.DataSets[i][j].Value.(int8)), 10))
+			case int16:
+				b.WriteString(strconv.FormatInt(int64(m.DataSets[i][j].Value.(int16)), 10))
+			case int32:
+				b.WriteString(strconv.FormatInt(int64(m.DataSets[i][j].Value.(int32)), 10))
+			case int64:
+				b.WriteString(strconv.FormatInt(int64(m.DataSets[i][j].Value.(int64)), 10))
+			case float32:
+				b.WriteString(strconv.FormatFloat(float64(m.DataSets[i][j].Value.(float32)), 'E', -1, 32))
+			case float64:
+				b.WriteString(strconv.FormatFloat(m.DataSets[i][j].Value.(float64), 'E', -1, 64))
+			case string:
+				b.WriteByte('"')
+				b.WriteString(m.DataSets[i][j].Value.(string))
+				b.WriteByte('"')
+			case net.IP:
+				b.WriteByte('"')
+				b.WriteString(m.DataSets[i][j].Value.(net.IP).String())
+				b.WriteByte('"')
+			case net.HardwareAddr:
+				b.WriteByte('"')
+				b.WriteString(m.DataSets[i][j].Value.(net.HardwareAddr).String())
+				b.WriteByte('"')
+			case []uint8:
+				b.WriteByte('"')
+				b.WriteString("0x" + hex.EncodeToString(m.DataSets[i][j].Value.([]uint8)))
+				b.WriteByte('"')
+			default:
+				b.WriteString("Invalid value")
+			}
+			b.WriteByte('\n')
+
+		}
+	}
+	logger.Println(b.String())
+	return nil
+}
+
+// ProtoBufMarshal encodes netflow v9 message to protobuf
 func ProtoBufMarshal(m *netflow9.Message) ([]byte, error) {
 	var (
 		err      error
@@ -40,94 +120,108 @@ func ProtoBufMarshal(m *netflow9.Message) ([]byte, error) {
 		srcAddr  net.IP
 		dstAddr  net.IP
 		validRec bool
+		b        bytes.Buffer
+		str      string
 	)
 	var flowInfoArray []*SensorProto.FlowInfo
 
 	for i := range m.DataSets {
-		logger.Println("Flow record %d", i+1)
+		str = "\nFlow Record " + strconv.FormatInt(int64(i+1), 10) + ": "
+		b.WriteString(str)
 		validRec = true
 		for j := range m.DataSets[i] {
-			logger.Printf("Looking at element ID %d ", m.DataSets[i][j].ID)
-			switch m.DataSets[i][j].ID {
-			// Trasport Protocol
-			case 4:
-				if m.DataSets[i][j].Value == nil {
-					logger.Println("Protocol invalid")
-					validRec = false
-				} else {
-					ipProto = uint32(m.DataSets[i][j].Value.(uint8))
-					logger.Println("Protocol: ", ipProto)
-				}
+			if m.DataSets[i][j].ID == 4 || m.DataSets[i][j].ID == 7 || m.DataSets[i][j].ID == 11 ||
+				m.DataSets[i][j].ID == 8 || m.DataSets[i][j].ID == 12 || m.DataSets[i][j].ID == 27 ||
+				m.DataSets[i][j].ID == 28 {
+				switch m.DataSets[i][j].ID {
+				// Trasport Protocol
+				case 4:
+					if strings.Compare(reflect.TypeOf(m.DataSets[i][j].Value).Name(), "uint8") != 0 {
+						b.WriteString(" Protocol invalid ")
+						validRec = false
+						break
+					} else {
+						ipProto = uint32(m.DataSets[i][j].Value.(uint8))
+						str = " Protocol: " + strconv.FormatInt(int64(ipProto), 10)
+						b.WriteString(str)
+					}
 
-			// Source Port
-			case 7:
-				if m.DataSets[i][j].Value == nil {
-					logger.Println("SrcPort invalid")
-					validRec = false
-				} else {
-					logger.Println("Case 7: ", m.DataSets[i][j].Value)
-					srcPort = int32(m.DataSets[i][j].Value.(uint16))
-					logger.Println("Src Port: ", srcPort)
-				}
+				// Source Port
+				case 7:
+					if strings.Compare(reflect.TypeOf(m.DataSets[i][j].Value).Name(), "uint16") != 0 {
+						b.WriteString(" SrcPort invalid ")
+						validRec = false
+						break
+					} else {
+						srcPort = int32(m.DataSets[i][j].Value.(uint16))
+						str = " Src Port: " + strconv.FormatInt(int64(srcPort), 10)
+						b.WriteString(str)
+					}
 
-			// Destintion Port
-			case 11:
-				if m.DataSets[i][j].Value == nil {
-					logger.Println("DstPort invalid")
-					validRec = false
-				} else {
-					dstPort = int32(m.DataSets[i][j].Value.(uint16))
-					logger.Println("Dst Port: ", dstPort)
-				}
+				// Destintion Port
+				case 11:
+					if strings.Compare(reflect.TypeOf(m.DataSets[i][j].Value).Name(), "uint16") != 0 {
+						b.WriteString(" DstPort invalid ")
+						validRec = false
+						break
+					} else {
+						dstPort = int32(m.DataSets[i][j].Value.(uint16))
+						str = " Dst Port: " + strconv.FormatInt(int64(srcPort), 10)
+						b.WriteString(str)
+					}
 
-			// Src IPv4 address
-			case 8:
-				if m.DataSets[i][j].Value == nil {
-					logger.Println("IPv4 src address invalid")
-				} else {
-					v = SensorProto.NetworkCommunicationInfo_AddressType_value["IPV4"]
-					srcAddr = m.DataSets[i][j].Value.(net.IP)
-					logger.Println("Src Addr ", srcAddr.String())
-				}
+				// Src IPv4 address
+				case 8:
+					if strings.Compare(reflect.TypeOf(m.DataSets[i][j].Value).Name(), "IP") != 0 {
+						b.WriteString(" IPv4 src address invalid ")
+					} else {
+						v = SensorProto.NetworkCommunicationInfo_AddressType_value["IPV4"]
+						srcAddr = m.DataSets[i][j].Value.(net.IP)
+						b.WriteString(" Src Addr " + srcAddr.String())
+					}
 
-			// Dst IPv4 address
-			case 12:
-				if m.DataSets[i][j].Value == nil {
-					logger.Println("IPv4 dst address invalid")
-				} else {
-					v = SensorProto.NetworkCommunicationInfo_AddressType_value["IPV4"]
-					dstAddr = m.DataSets[i][j].Value.(net.IP)
-					logger.Println("Dst Addr ", dstAddr.String())
-				}
+				// Dst IPv4 address
+				case 12:
+					if strings.Compare(reflect.TypeOf(m.DataSets[i][j].Value).Name(), "IP") != 0 {
+						b.WriteString(" IPv4 dst address invalid ")
+					} else {
+						v = SensorProto.NetworkCommunicationInfo_AddressType_value["IPV4"]
+						dstAddr = m.DataSets[i][j].Value.(net.IP)
+						b.WriteString(" Dst Addr " + dstAddr.String())
+					}
 
-			// Src IPv6 address
-			case 27:
-				if m.DataSets[i][j].Value == nil {
-					logger.Println("IPv6 src address invalid")
-				} else {
-					v = SensorProto.NetworkCommunicationInfo_AddressType_value["IPV6"]
-					srcAddr = m.DataSets[i][j].Value.(net.IP)
-					logger.Println("Src Addr ", srcAddr.String())
-				}
+				// Src IPv6 address
+				case 27:
+					if strings.Compare(reflect.TypeOf(m.DataSets[i][j].Value).Name(), "IP") != 0 {
+						b.WriteString(" IPv6 src address invalid ")
+					} else {
+						v = SensorProto.NetworkCommunicationInfo_AddressType_value["IPV6"]
+						srcAddr = m.DataSets[i][j].Value.(net.IP)
+						b.WriteString(" Src Addr " + srcAddr.String())
+					}
 
-			// Dst IPv6 address
-			case 28:
-				if m.DataSets[i][j].Value == nil {
-					logger.Println("IPv6 dst address invalid")
-				} else {
-					v = SensorProto.NetworkCommunicationInfo_AddressType_value["IPV6"]
-					dstAddr = m.DataSets[i][j].Value.(net.IP)
-					logger.Println("Dst Addr ", dstAddr.String())
-				}
-				/*
-					// Src MAC address
-					case 56:
-							srcAddr = m.DataSets[i][j].Value.(net.HardwareAddr).String()
+				// Dst IPv6 address
+				case 28:
+					if strings.Compare(reflect.TypeOf(m.DataSets[i][j].Value).Name(), "IP") != 0 {
+						b.WriteString(" IPv6 dst address invalid ")
+					} else {
+						v = SensorProto.NetworkCommunicationInfo_AddressType_value["IPV6"]
+						dstAddr = m.DataSets[i][j].Value.(net.IP)
+						b.WriteString(" Dst Addr " + dstAddr.String())
+					}
+					/*
+						// Src MAC address
+						case 56:
+								srcAddr = m.DataSets[i][j].Value.(net.HardwareAddr).String()
 
-					// Dst MAC address
-					case 80:
-							dstAddr = m.DataSets[i][j].Value.(net.HardwareAddr).String()
-				*/
+						// Dst MAC address
+						case 80:
+								dstAddr = m.DataSets[i][j].Value.(net.HardwareAddr).String()
+					*/
+				}
+			}
+			if validRec != true {
+				break
 			}
 		}
 
@@ -154,19 +248,6 @@ func ProtoBufMarshal(m *netflow9.Message) ([]byte, error) {
 
 			flowInfoArray = append(flowInfoArray, flowInfo)
 
-			// TODO: Add check if we are exceeding export limit
-
-			netflowV9Flows := &SensorProto.FlowInfoFromSensor{
-				SensorId: proto.String(m.AgentID),
-				FlowInfo: flowInfoArray,
-			}
-
-			data, err := proto.Marshal(netflowV9Flows)
-			if err != nil {
-				return nil, err
-			}
-
-			return data, nil
 		}
 
 	}

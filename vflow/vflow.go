@@ -49,14 +49,22 @@ func main() {
 
 	opts = GetOptions()
 
+	opts.Logger.Println("In here 1") // TODO_REMOVE
 	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
 
 	sFlow := NewSFlow()
+
+	opts.Logger.Println("In here 2") // TODO_REMOVE
 	ipfix := NewIPFIX()
+
+	opts.Logger.Println("In here 3") // TODO_REMOVE
 	netflow9 := NewNetflowV9()
+
+	opts.Logger.Println("In here 4") // TODO_REMOVE
 
 	protocols := []protocol{sFlow, ipfix, netflow9}
 
+	opts.Logger.Println("In here 5") // TODO_REMOVE
 	for _, p := range protocols {
 		wg.Add(1)
 		go func(p protocol) {
@@ -65,10 +73,13 @@ func main() {
 		}(p)
 	}
 
+	opts.Logger.Println("In here 6") // TODO_REMOVE
 	go statsHTTPServer(ipfix, sFlow, netflow9)
 
+	opts.Logger.Println("In here 7") // TODO_REMOVE
 	<-signalCh
 
+	opts.Logger.Println("In here 8") // TODO_REMOVE
 	for _, p := range protocols {
 		wg.Add(1)
 		go func(p protocol) {

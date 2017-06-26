@@ -105,6 +105,7 @@ func StatsFlowHandler(i *IPFIX, s *SFlow, n *NetflowV9) http.HandlerFunc {
 
 func statsHTTPServer(ipfix *IPFIX, sflow *SFlow, netflow9 *NetflowV9) {
 	if !opts.StatsEnabled {
+		logger.Println("Skipping stats web server")
 		return
 	}
 

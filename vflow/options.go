@@ -295,4 +295,9 @@ func vFlowLoadCfg(opts *Options) {
 	if err != nil {
 		opts.Logger.Println(err)
 	}
+	opts.Logger.Println("PID file: ", opts.PIDFile)
+	opts.Logger.Println("StatsHttpPort: ", opts.StatsHTTPPort)
+	opts.Logger.Println("mq-name: ", opts.MQName)
+	opts.Logger.Println("mq-config-file: ", opts.MQConfigFile)
+	opts.Logger.Println("stats-enabled: ", opts.StatsEnabled)
 }

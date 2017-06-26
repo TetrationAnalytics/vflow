@@ -24,13 +24,14 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"log"
 	"sync"
 	"time"
 
 	cluster "github.com/bsm/sarama-cluster"
+	"github.com/golang/protobuf/proto"
+	SensorProto "github.com/tetration/vflow/vflow/protos/sensor"
 )
 
 type options struct {
@@ -55,12 +56,12 @@ type ipfix struct {
 var opts options
 
 func init() {
-	flag.StringVar(&opts.Broker, "broker", "127.0.0.1:9092", "broker ipaddress:port")
-	flag.StringVar(&opts.Topic, "topic", "vflow.ipfix", "kafka topic")
+	flag.StringVar(&opts.Broker, "broker", "172.31.167.10:9092", "broker ipaddress:port")
+	flag.StringVar(&opts.Topic, "topic", "vflow.netflow9", "kafka topic")
 	flag.StringVar(&opts.Value, "value", "8.8.8.8", "element value - string")
 	flag.BoolVar(&opts.Debug, "debug", false, "enabled/disabled debug")
 	flag.IntVar(&opts.Id, "id", 12, "IPFIX element ID")
-	flag.IntVar(&opts.Workers, "workers", 16, "workers number / partition number")
+	flag.IntVar(&opts.Workers, "workers", 1, "workers number / partition number")
 
 	flag.Parse()
 }
@@ -76,11 +77,16 @@ func main() {
 
 	for i := 0; i < opts.Workers; i++ {
 		go func(ti int) {
-			var objmap ipfix
-
+			var flowInfoArray []*SensorProto.FlowInfo
+			log.Printf("brokers: %s\n", opts.Broker)
+			log.Printf("Topic: %s\n", opts.Topic)
 			brokers := []string{opts.Broker}
 			topics := []string{opts.Topic}
-			consumer, err := cluster.NewConsumer(brokers, "mygroup", topics, config)
+
+			consumer, err := cluster.NewConsumer(brokers, "test-customer-group", topics, config)
+			if opts.Debug {
+				log.Printf("Created Consumer %v\n", consumer)
+			}
 
 			if err != nil {
 				panic(err)
@@ -99,8 +105,9 @@ func main() {
 					}
 					pCount = count
 				case msg, more := <-consumer.Messages():
+					log.Printf("Got a new message")
 					if more {
-						if err := json.Unmarshal(msg.Value, &objmap); err != nil {
+						/*if err := json.Unmarshal(msg.Value, &objmap); err != nil {
 							log.Println(err)
 						} else {
 							for _, data := range objmap.DataSets {
@@ -108,6 +115,33 @@ func main() {
 									if dd.I == opts.Id && dd.V == opts.Value {
 										log.Printf("%#v\n", data)
 									}
+								}
+							}
+						}*/
+						netflowv9Flows := &SensorProto.FlowInfoFromSensor{}
+						err = proto.Unmarshal(msg.Value, netflowv9Flows)
+						if err != nil {
+							log.Println("unmarshalling error: ", err)
+						} else {
+							flowInfoArray = netflowv9Flows.GetFlowInfo()
+							log.Println("\n\nAgent id: ", netflowv9Flows.GetSensorId())
+							var i = 0
+							if flowInfoArray != nil {
+								for _, flow := range flowInfoArray {
+									i++
+									key := flow.GetKey()
+									log.Println("Flow: ", i, " Key Type: ", key.KeyType,
+
+										" Protocol: ", *key.Proto,
+										" SrcAddr: ", key.SrcAddress,
+										" SrcPort: ", *key.SrcPort,
+										" DstAddr: ", key.DstAddress,
+										" DstPort: ", *key.DstPort)
+									/*" Protocol: ", strconv.FormatUint(uint64(*key.Proto), 10),
+									" SrcAddr: ", key.SrcAddress,
+									" SrcPort: ", strconv.FormatUint(uint64(*key.SrcPort), 10),
+									" DstAddr: ", key.DstAddress,
+									" DstPort: ", strconv.FormatUint(uint64(*key.DstPort), 10))*/
 								}
 							}
 						}
