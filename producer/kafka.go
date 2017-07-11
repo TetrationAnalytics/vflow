@@ -31,6 +31,9 @@ import (
 	"strings"
 	"time"
 
+	"crypto/tls"
+	"crypto/x509"
+
 	"github.com/Shopify/sarama"
 	"gopkg.in/yaml.v2"
 )
@@ -48,6 +51,11 @@ type KafkaConfig struct {
 	Compression  string   `yaml:"compression"`
 	RetryMax     int      `yaml:"retry-max"`
 	RetryBackoff int      `yaml:"retry-backoff"`
+	// TLS config
+	SecureKafkaEnable     bool   `yaml:"secure-kafka-enable"`
+	ClientCertificateFile string `yaml:"client-cert"`
+	ClientPrivateKeyFile  string `yaml:"client-key"`
+	RootCAFile            string `yaml:"root-ca"`
 }
 
 func (k *Kafka) setup(configFile string, logger *log.Logger) error {
@@ -71,6 +79,37 @@ func (k *Kafka) setup(configFile string, logger *log.Logger) error {
 	config.Producer.Retry.Max = k.config.RetryMax
 	config.Producer.Retry.Backoff = time.Duration(k.config.RetryBackoff) * time.Millisecond
 
+	// if secure kafka is availabe set the TLS config76y
+	if k.config.SecureKafkaEnable {
+		config.Net.TLS.Enable = true
+
+		config.Net.TLS.Config = &tls.Config{}
+		// set TLS version to TLSv1.2
+		config.Net.TLS.Config.MinVersion = 0x0303
+		if k.config.ClientCertificateFile != "" && k.config.ClientPrivateKeyFile != "" {
+			logger.Println("Cert file: ", k.config.ClientCertificateFile, " Cert Key: ", k.config.ClientPrivateKeyFile)
+			cert, err := tls.LoadX509KeyPair(k.config.ClientCertificateFile, k.config.ClientPrivateKeyFile)
+			if err != nil {
+				logger.Println("Error loading certificats: ", err)
+				return err
+			}
+			config.Net.TLS.Config.Certificates = []tls.Certificate{cert}
+		}
+		if k.config.RootCAFile != "" {
+			logger.Println("Root CA: ", k.config.RootCAFile)
+			tlsCertPool := x509.NewCertPool()
+			caCertFile, err := ioutil.ReadFile(k.config.RootCAFile)
+			if err != nil {
+				logger.Println("ERROR: failed to read custom Certificate Authority file", err)
+				return err
+			}
+			if !tlsCertPool.AppendCertsFromPEM(caCertFile) {
+				logger.Fatal("ERROR: failed to append certificates from Certificate Authority file")
+				return nil
+			}
+			config.Net.TLS.Config.RootCAs = tlsCertPool
+		}
+	}
 	switch k.config.Compression {
 	case "gzip":
 		config.Producer.Compression = sarama.CompressionGZIP
