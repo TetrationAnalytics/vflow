@@ -64,6 +64,8 @@ func (k *Kafka) setup(configFile string, logger *log.Logger) error {
 		err    error
 	)
 
+	sarama.Logger = logger
+	// sarama.Logger = log.New(os.Stdout, "[sarama] ", log.LstdFlags)
 	// set default values
 	k.config = KafkaConfig{
 		Brokers: []string{"localhost:9092"},
@@ -82,10 +84,14 @@ func (k *Kafka) setup(configFile string, logger *log.Logger) error {
 	// if secure kafka is availabe set the TLS config76y
 	if k.config.SecureKafkaEnable {
 		config.Net.TLS.Enable = true
-
 		config.Net.TLS.Config = &tls.Config{}
 		// set TLS version to TLSv1.2
-		config.Net.TLS.Config.MinVersion = 0x0303
+		config.Net.TLS.Config.MinVersion = tls.VersionTLS12
+		config.Net.TLS.Config.MaxVersion = tls.VersionTLS12
+		config.Net.TLS.Config.PreferServerCipherSuites = true
+		config.Net.TLS.Config.InsecureSkipVerify = true
+		logger.Println("MinVersion: ", config.Net.TLS.Config.MinVersion, "MaxVersion: ", config.Net.TLS.Config.MaxVersion)
+
 		if k.config.ClientCertificateFile != "" && k.config.ClientPrivateKeyFile != "" {
 			logger.Println("Cert file: ", k.config.ClientCertificateFile, " Cert Key: ", k.config.ClientPrivateKeyFile)
 			cert, err := tls.LoadX509KeyPair(k.config.ClientCertificateFile, k.config.ClientPrivateKeyFile)
@@ -93,6 +99,7 @@ func (k *Kafka) setup(configFile string, logger *log.Logger) error {
 				logger.Println("Error loading certificats: ", err)
 				return err
 			}
+			logger.Println("Added root Cert in tls config")
 			config.Net.TLS.Config.Certificates = []tls.Certificate{cert}
 		}
 		if k.config.RootCAFile != "" {
@@ -108,6 +115,7 @@ func (k *Kafka) setup(configFile string, logger *log.Logger) error {
 				return nil
 			}
 			config.Net.TLS.Config.RootCAs = tlsCertPool
+			logger.Println("Added root Cert in tls config")
 		}
 	}
 	switch k.config.Compression {
@@ -125,14 +133,17 @@ func (k *Kafka) setup(configFile string, logger *log.Logger) error {
 	if err = k.loadEnv(config); err != nil {
 		logger.Println(err)
 	}
+	logger.Println("Loaded enviornment")
 
 	if err = config.Validate(); err != nil {
 		logger.Fatal(err)
 	}
+	logger.Println("Validated config")
 
 	k.producer, err = sarama.NewAsyncProducer(k.config.Brokers, config)
 	k.logger = logger
 	if err != nil {
+		logger.Println("ERROR AsyncProducer not created")
 		return err
 	}
 

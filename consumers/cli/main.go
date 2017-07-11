@@ -73,9 +73,9 @@ func init() {
 	flag.IntVar(&opts.Id, "id", 12, "IPFIX element ID")
 	flag.IntVar(&opts.Workers, "workers", 1, "workers number / partition number")
 	flag.BoolVar(&opts.SecureKafka, "secure", true, "enabled/disabled secure kafka")
-	flag.StringVar(&opts.ClientCert, "cert", "/Users/tpatward/Downloads/consumer_certs/consumer.signed", "client certificate")
-	flag.StringVar(&opts.ClientKey, "key", "/Users/tpatward/Downloads/consumer_certs/consumer.key", "client key")
-	flag.StringVar(&opts.RootCACert, "cacert", "/Users/tpatward/Downloads/consumer_certs/ca-cert", "root ca certificate")
+	flag.StringVar(&opts.ClientCert, "cert", "/root/consumer_certs/consumer.signed", "client certificate")
+	flag.StringVar(&opts.ClientKey, "key", "/root/consumer_certs/consumer.key", "client key")
+	flag.StringVar(&opts.RootCACert, "cacert", "/root/consumer_certs/ca-cert", "root ca certificate")
 	flag.Parse()
 }
 
