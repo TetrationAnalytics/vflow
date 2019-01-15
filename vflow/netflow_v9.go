@@ -25,6 +25,7 @@ package main
 import (
 	"bytes"
 	"net"
+	"path"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -108,14 +109,14 @@ func (i *NetflowV9) run() {
 		}()
 	}
 
-	logger.Printf("netflow v9 is running (addr: %s, port#: %d, workers#: %d)", i.addr, i.port, i.workers)
+	logger.Printf("netflow v9 is running (UDP: listening on [::]:%d workers#: %d)", i.port, i.workers)
 
 	mCacheNF9 = netflow9.GetCache(opts.NetflowV9TplCacheFile)
 
 	go func() {
 		p := producer.NewProducer(opts.MQName)
 
-		p.MQConfigFile = opts.MQConfigFile
+		p.MQConfigFile = path.Join(opts.VFlowConfigPath, opts.MQConfigFile)
 		p.MQErrorCount = &i.stats.MQErrorCount
 		p.Logger = logger
 		p.Chan = netflowV9MQCh
@@ -203,7 +204,9 @@ LOOP:
 		d := netflow9.NewDecoder(msg.raddr.IP, msg.body)
 		if decodedMsg, err = d.Decode(mCacheNF9); err != nil {
 			logger.Println(err)
-			continue
+			if decodedMsg == nil {
+				continue
+			}
 		}
 
 		atomic.AddUint64(&i.stats.DecodedCount, 1)
@@ -227,7 +230,7 @@ LOOP:
 			}
 
 			select {
-			case netflowV9MQCh <- b:
+			case netflowV9MQCh <- append([]byte{}, b...):
 			default:
 			}
 		}

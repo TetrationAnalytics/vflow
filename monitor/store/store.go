@@ -34,8 +34,8 @@ import (
 // Monitor is an interface to store system
 // and netflow statistics
 type Monitor interface {
-	System() error
-	Netflow() error
+	System(string) error
+	Netflow(string) error
 }
 
 // IPFIX represents IPFIX metrics
@@ -59,12 +59,34 @@ type SFlow struct {
 	Workers      int64
 }
 
+// NetflowV5 represents Netflow v5 metrics
+type NetflowV5 struct {
+	UDPQueue     int64
+	MessageQueue int64
+	UDPCount     int64
+	DecodedCount int64
+	MQErrorCount int64
+	Workers      int64
+}
+
+// NetflowV9 represents Netflow v9 metrics
+type NetflowV9 struct {
+	UDPQueue     int64
+	MessageQueue int64
+	UDPCount     int64
+	DecodedCount int64
+	MQErrorCount int64
+	Workers      int64
+}
+
 // Flow represents flow (IPFIX+sFlow) metrics
 type Flow struct {
 	StartTime int64
 	Timestamp int64
 	IPFIX     IPFIX
 	SFlow     SFlow
+	NetflowV5 NetflowV5
+	NetflowV9 NetflowV9
 }
 
 // Sys represents system/go-runtime statistics
@@ -132,14 +154,14 @@ func (c *Client) Post(url string, cType, query string) ([]byte, error) {
 	return body, nil
 }
 
-func getFlow(host string) (*Flow, *Flow, error) {
-	lastFlowFile := "/tmp/vflow.mon.lastflow"
+func getFlow(vhost, host string) (*Flow, *Flow, error) {
+	lastFlowFile := "/tmp/vflow.mon.lastflow." + host
 
 	flow := new(Flow)
 	lastFlow := new(Flow)
 
 	client := NewHTTP()
-	err := client.Get(host+"/flow", flow)
+	err := client.Get(vhost+"/flow", flow)
 	if err != nil {
 		return nil, nil, err
 	}

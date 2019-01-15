@@ -25,13 +25,13 @@ package main
 import (
 	"bytes"
 	"net"
+	"path"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/TetrationAnalytics/vflow/ipfix"
-	"github.com/TetrationAnalytics/vflow/mirror"
 	"github.com/TetrationAnalytics/vflow/producer"
 )
 
@@ -83,6 +83,7 @@ var (
 func NewIPFIX() *IPFIX {
 	return &IPFIX{
 		port:    opts.IPFIXPort,
+		addr:    opts.IPFIXAddr,
 		workers: opts.IPFIXWorkers,
 		pool:    make(chan chan struct{}, maxWorkers),
 	}
@@ -112,7 +113,9 @@ func (i *IPFIX) run() {
 		}()
 	}
 
-	logger.Printf("ipfix is running (addr: %s, port#: %d, workers#: %d)", i.addr, i.port, i.workers)
+	logger.Printf("ipfix is running (UDP: listening on [::]:%d workers#: %d)", i.port, i.workers)
+
+	ipfix.LoadExtElements(opts.VFlowConfigPath)
 
 	mCache = ipfix.GetCache(opts.IPFIXTplCacheFile)
 	go ipfix.RPC(mCache, &ipfix.RPCConfig{
@@ -125,7 +128,7 @@ func (i *IPFIX) run() {
 	go func() {
 		p := producer.NewProducer(opts.MQName)
 
-		p.MQConfigFile = opts.MQConfigFile
+		p.MQConfigFile = path.Join(opts.VFlowConfigPath, opts.MQConfigFile)
 		p.MQErrorCount = &i.stats.MQErrorCount
 		p.Logger = logger
 		p.Chan = ipfixMQCh
@@ -225,12 +228,15 @@ LOOP:
 		d := ipfix.NewDecoder(msg.raddr.IP, msg.body)
 		if decodedMsg, err = d.Decode(mCache); err != nil {
 			logger.Println(err)
-			continue
+			// in case ipfix message header couldn't decode
+			if decodedMsg == nil {
+				continue
+			}
 		}
 
 		atomic.AddUint64(&i.stats.DecodedCount, 1)
 
-		if decodedMsg.DataSets != nil {
+		if len(decodedMsg.DataSets) > 0 {
 			b, err = decodedMsg.JSONMarshal(buf)
 			if err != nil {
 				logger.Println(err)
@@ -238,13 +244,13 @@ LOOP:
 			}
 
 			select {
-			case ipfixMQCh <- b:
+			case ipfixMQCh <- append([]byte{}, b...):
 			default:
 			}
-		}
 
-		if opts.Verbose {
-			logger.Println(string(b))
+			if opts.Verbose {
+				logger.Println(string(b))
+			}
 		}
 
 	}
@@ -259,99 +265,6 @@ func (i *IPFIX) status() *IPFIXStats {
 		DecodedCount:   atomic.LoadUint64(&i.stats.DecodedCount),
 		MQErrorCount:   atomic.LoadUint64(&i.stats.MQErrorCount),
 		Workers:        atomic.LoadInt32(&i.stats.Workers),
-	}
-}
-
-func mirrorIPFIX(dst net.IP, port int, ch chan IPFIXUDPMsg) error {
-	var (
-		packet = make([]byte, opts.IPFIXUDPSize)
-		msg    IPFIXUDPMsg
-		pLen   int
-		err    error
-		ipHdr  []byte
-		ipHLen int
-		ipv4   bool
-		ip     mirror.IP
-	)
-
-	conn, err := mirror.NewRawConn(dst)
-	if err != nil {
-		return err
-	}
-
-	udp := mirror.UDP{55117, port, 0, 0}
-	udpHdr := udp.Marshal()
-
-	if dst.To4() != nil {
-		ipv4 = true
-	}
-
-	if ipv4 {
-		ip = mirror.NewIPv4HeaderTpl(mirror.UDPProto)
-		ipHdr = ip.Marshal()
-		ipHLen = mirror.IPv4HLen
-	} else {
-		ip = mirror.NewIPv6HeaderTpl(mirror.UDPProto)
-		ipHdr = ip.Marshal()
-		ipHLen = mirror.IPv6HLen
-	}
-
-	for {
-		msg = <-ch
-		pLen = len(msg.body)
-
-		ip.SetAddrs(ipHdr, msg.raddr.IP, dst)
-		ip.SetLen(ipHdr, pLen+mirror.UDPHLen)
-
-		udp.SetLen(udpHdr, pLen)
-		// IPv6 checksum mandatory
-		if !ipv4 {
-			udp.SetChecksum()
-		}
-
-		copy(packet[0:ipHLen], ipHdr)
-		copy(packet[ipHLen:ipHLen+8], udpHdr)
-		copy(packet[ipHLen+8:], msg.body)
-
-		ipfixBuffer.Put(msg.body[:opts.IPFIXUDPSize])
-
-		if err = conn.Send(packet[0 : ipHLen+8+pLen]); err != nil {
-			return err
-		}
-	}
-}
-
-func mirrorIPFIXDispatcher(ch chan IPFIXUDPMsg) {
-	var (
-		ch4 = make(chan IPFIXUDPMsg, 1000)
-		ch6 = make(chan IPFIXUDPMsg, 1000)
-		msg IPFIXUDPMsg
-	)
-
-	if opts.IPFIXMirrorAddr == "" {
-		return
-	}
-
-	for w := 0; w < opts.IPFIXMirrorWorkers; w++ {
-		dst := net.ParseIP(opts.IPFIXMirrorAddr)
-
-		if dst.To4() != nil {
-			go mirrorIPFIX(dst, opts.IPFIXMirrorPort, ch4)
-		} else {
-			go mirrorIPFIX(dst, opts.IPFIXMirrorPort, ch6)
-		}
-	}
-
-	ipfixMirrorEnabled = true
-	logger.Printf("ipfix mirror service is running (workers#: %d) ...", opts.IPFIXMirrorWorkers)
-
-	for {
-		msg = <-ch
-		if msg.raddr.IP.To4() != nil {
-			ch4 <- msg
-		} else {
-			ch6 <- msg
-		}
 	}
 }
 

@@ -25,6 +25,7 @@ package sflow
 import (
 	"errors"
 	"io"
+	"net"
 
 	"github.com/TetrationAnalytics/vflow/packet"
 )
@@ -35,6 +36,9 @@ const (
 
 	// SFDataExtSwitch is sFlow Extended Switch Data number
 	SFDataExtSwitch = 1001
+
+	// SFDataExtRouter is sFlow Extended Router Data number
+	SFDataExtRouter = 1002
 )
 
 // FlowSample represents single flow sample
@@ -47,6 +51,7 @@ type FlowSample struct {
 	Input        uint32 // SNMP ifIndex of input interface
 	Output       uint32 // SNMP ifIndex of input interface
 	RecordsNo    uint32 // Number of records to follow
+	Records      map[string]Record
 }
 
 // SampledHeader represents sampled header
@@ -64,6 +69,13 @@ type ExtSwitchData struct {
 	SrcPriority uint32 // The 802.1p priority of incoming frame
 	DstVlan     uint32 // The 802.1Q VLAN id of outgoing frame
 	DstPriority uint32 // The 802.1p priority of outgoing frame
+}
+
+// ExtRouterData represents extended router data
+type ExtRouterData struct {
+	NextHop net.IP
+	SrcMask uint32
+	DstMask uint32
 }
 
 var (
@@ -103,11 +115,9 @@ func (fs *FlowSample) unmarshal(r io.ReadSeeker) error {
 		return err
 	}
 
-	if err = read(r, &fs.RecordsNo); err != nil {
-		return err
-	}
+	err = read(r, &fs.RecordsNo)
 
-	return nil
+	return err
 }
 
 func (sh *SampledHeader) unmarshal(r io.Reader) error {
@@ -164,17 +174,32 @@ func (es *ExtSwitchData) unmarshal(r io.Reader) error {
 		return err
 	}
 
-	if err = read(r, &es.SrcPriority); err != nil {
+	err = read(r, &es.SrcPriority)
+
+	return err
+}
+
+func (er *ExtRouterData) unmarshal(r io.Reader, l uint32) error {
+	var err error
+
+	buff := make([]byte, l-8)
+	if err = read(r, &buff); err != nil {
+		return err
+	}
+	er.NextHop = buff[4:]
+
+	if err = read(r, &er.SrcMask); err != nil {
 		return err
 	}
 
-	return nil
+	err = read(r, &er.DstMask)
+
+	return err
 }
 
-func decodeFlowSample(r io.ReadSeeker) ([]interface{}, error) {
+func decodeFlowSample(r io.ReadSeeker) (*FlowSample, error) {
 	var (
 		fs          = new(FlowSample)
-		data        []interface{}
 		rTypeFormat uint32
 		rTypeLength uint32
 		err         error
@@ -184,7 +209,7 @@ func decodeFlowSample(r io.ReadSeeker) ([]interface{}, error) {
 		return nil, err
 	}
 
-	data = append(data, fs)
+	fs.Records = make(map[string]Record)
 
 	for i := uint32(0); i < fs.RecordsNo; i++ {
 		if err = read(r, &rTypeFormat); err != nil {
@@ -196,23 +221,31 @@ func decodeFlowSample(r io.ReadSeeker) ([]interface{}, error) {
 
 		switch rTypeFormat {
 		case SFDataRawHeader:
-			h, err := decodeSampledHeader(r)
+			d, err := decodeSampledHeader(r)
 			if err != nil {
-				return data, err
+				return fs, err
 			}
-			data = append(data, h)
+			fs.Records["RawHeader"] = d
 		case SFDataExtSwitch:
 			d, err := decodeExtSwitchData(r)
 			if err != nil {
-				return data, err
+				return fs, err
 			}
-			data = append(data, d)
+
+			fs.Records["ExtSwitch"] = d
+		case SFDataExtRouter:
+			d, err := decodeExtRouterData(r, rTypeLength)
+			if err != nil {
+				return fs, err
+			}
+
+			fs.Records["ExtRouter"] = d
 		default:
 			r.Seek(int64(rTypeLength), 1)
 		}
 	}
 
-	return data, nil
+	return fs, nil
 }
 
 func decodeSampledHeader(r io.Reader) (*packet.Packet, error) {
@@ -226,7 +259,7 @@ func decodeSampledHeader(r io.Reader) (*packet.Packet, error) {
 	}
 
 	p := packet.NewPacket()
-	d, err := p.Decoder(h.Header)
+	d, err := p.Decoder(h.Header, h.Protocol)
 	if err != nil {
 		return nil, err
 	}
@@ -242,4 +275,14 @@ func decodeExtSwitchData(r io.Reader) (*ExtSwitchData, error) {
 	}
 
 	return es, nil
+}
+
+func decodeExtRouterData(r io.Reader, l uint32) (*ExtRouterData, error) {
+	var er = new(ExtRouterData)
+
+	if err := er.unmarshal(r, l); err != nil {
+		return nil, err
+	}
+
+	return er, nil
 }

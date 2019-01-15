@@ -3,15 +3,17 @@
 [![Build Status](https://travis-ci.org/VerizonDigital/vflow.svg?branch=master)](https://travis-ci.org/VerizonDigital/vflow) 
 [![Go Report Card](https://goreportcard.com/badge/github.com/VerizonDigital/vflow)](https://goreportcard.com/report/github.com/VerizonDigital/vflow)
 [![GoDoc](https://godoc.org/github.com/VerizonDigital/vflow?status.svg)](https://godoc.org/github.com/VerizonDigital/vflow)
+[![Join Slack](https://img.shields.io/badge/join-slack-9B69A0.svg)](https://join.slack.com/t/vflowworkspace/shared_invite/enQtNTAwNjMyNzg0MDY5LWJlNGExZDNiYThmYjkyNmM1NDAyZGY4NmMyZjYwYmE0ZjAzZjA2MTZlZjRkYjY3Njc1MDJjYTlhZDU2OTk2MGE)
 
-High-performance, scalable and reliable IPFIX, sFlow and Netflow collector. 
+High-performance, scalable and reliable IPFIX, sFlow and Netflow collector (written in pure Golang).
 
 ## Features
 - IPFIX RFC7011 collector
-- sFLow v5 raw header packet collector
-- Netflow v9 (Beta)
+- sFLow v5 raw header / counters collector
+- Netflow v5 collector
+- Netflow v9 collector
 - Decoding sFlow raw header L2/L3/L4 
-- Produce to Apache Kafka, NSQ
+- Produce to Apache Kafka, NSQ, NATS
 - Replicate IPFIX to 3rd party collector
 - Supports IPv4 and IPv6
 - Monitoring with InfluxDB and OpenTSDB backend
@@ -21,6 +23,7 @@ High-performance, scalable and reliable IPFIX, sFlow and Netflow collector.
 ## Documentation
 - [Architecture](/docs/design.md).
 - [Configuration](/docs/config.md).
+- [Quick Start](/docs/quick_start_nsq.md).
 - [JUNOS Integration](/docs/junos_integration.md).
 - [Monitoring](/monitor/README.md).
 - [Stress / Load Generator](/stress/README.md).
@@ -34,7 +37,11 @@ The IPFIX data decodes to JSON format and IDs are [IANA IPFIX element ID](http:/
 
 ## Decoded sFlow data
 ```json
-{"Header":{"Version":5,"IPVersion":1,"AgentSubID":0,"SequenceNo":24324,"SysUpTime":766903208,"SamplesNo":1,"IPAddress":"192.16.14.0"},"ExtSWData":{"SrcVlan":0,"SrcPriority":0,"DstVlan":12,"DstPriority":0},"Sample":{"SequenceNo":0,"SourceID":0,"SamplingRate":2000,"SamplePool":0,"Drops":0,"Input":552,"Output":0,"RecordsNo":2},"Packet":{"L2":{"SrcMAC":"d4:04:ff:01:1d:9e","DstMAC":"30:7c:5e:e5:59:ef","Vlan":12,"EtherType":34525},"L3":{"Version":6,"TrafficClass":0,"FlowLabel":0,"PayloadLen":265,"NextHeader":17,"HopLimit":57,"Src":"2600:8000:5207:6f00::1","Dst":"2606:2800:404e:2:1663:6fe:2cc6:100a"},"L4":{"SrcPort":53,"DstPort":34234}}}
+{"Version":5,"IPVersion":1,"AgentSubID":5,"SequenceNo":37591,"SysUpTime":3287084017,"SamplesNo":1,"Samples":[{"SequenceNo":1530345639,"SourceID":0,"SamplingRate":4096,"SamplePool":1938456576,"Drops":0,"Input":536,"Output":728,"RecordsNo":3,"Records":{"ExtRouter":{"NextHop":"115.131.251.90","SrcMask":24,"DstMask":14},"ExtSwitch":{"SrcVlan":0,"SrcPriority":0,"DstVlan":0,"DstPriority":0},"RawHeader":{"L2":{"SrcMAC":"58:00:bb:e7:57:6f","DstMAC":"f4:a7:39:44:a8:27","Vlan":0,"EtherType":2048},"L3":{"Version":4,"TOS":0,"TotalLen":1452,"ID":13515,"Flags":0,"FragOff":0,"TTL":62,"Protocol":6,"Checksum":8564,"Src":"10.1.8.5","Dst":"161.140.24.181"},"L4":{"SrcPort":443,"DstPort":56521,"DataOffset":5,"Reserved":0,"Flags":16}}}}],"IPAddress":"192.168.10.0"}
+```
+## Decoded Netflow v5 data
+``` json
+{"AgentID":"114.23.3.231","Header":{"Version":5,"Count":3,"SysUpTimeMSecs":51469784,"UNIXSecs":1544476581,"UNIXNSecs":0,"SeqNum":873873830,"EngType":0,"EngID":0,"SmpInt":1000},"Flows":[{"SrcAddr":"125.238.46.48","DstAddr":"114.23.236.96","NextHop":"114.23.3.231","Input":791,"Output":817,"PktCount":4,"L3Octets":1708,"StartTime":51402145,"EndTime":51433264,"SrcPort":49233,"DstPort":443,"Padding1":0,"TCPFlags":16,"ProtType":6,"Tos":0,"SrcAsNum":4771,"DstAsNum":56030,"SrcMask":20,"DstMask":22,"Padding2":0},{"SrcAddr":"125.238.46.48","DstAddr":"114.23.236.96","NextHop":"114.23.3.231","Input":791,"Output":817,"PktCount":1,"L3Octets":441,"StartTime":51425137,"EndTime":51425137,"SrcPort":49233,"DstPort":443,"Padding1":0,"TCPFlags":24,"ProtType":6,"Tos":0,"SrcAsNum":4771,"DstAsNum":56030,"SrcMask":20,"DstMask":22,"Padding2":0},{"SrcAddr":"210.5.53.48","DstAddr":"103.22.200.210","NextHop":"122.56.118.157","Input":564,"Output":802,"PktCount":1,"L3Octets":1500,"StartTime":51420072,"EndTime":51420072,"SrcPort":80,"DstPort":56108,"Padding1":0,"TCPFlags":16,"ProtType":6,"Tos":0,"SrcAsNum":56030,"DstAsNum":13335,"SrcMask":24,"DstMask":23,"Padding2":0}]}
 ```
 ## Decoded Netflow v9 data
 ```json
@@ -42,10 +49,11 @@ The IPFIX data decodes to JSON format and IDs are [IANA IPFIX element ID](http:/
 ```
 
 ## Supported platform
-- Linux 
+- Linux
+- Windows
 
 ## Build
-Given that the Go Language compiler (version 1.8 preferred) is installed, you can build it with:
+Given that the Go Language compiler (version 1.11 preferred) is installed, you can build it with:
 ```
 go get github.com/VerizonDigital/vflow/vflow
 cd $GOPATH/src/github.com/VerizonDigital/vflow
@@ -54,6 +62,20 @@ make build
 or
 go get -d ./...
 cd vflow; go build 
+```
+## Installation
+You can download and install pre-built debian package as below ([RPM and Linux binary are available](https://github.com/VerizonDigital/vflow/releases/tag/v0.7.0)). 
+
+dpkg -i [vflow-0.7.0-x86_64.deb](https://github.com/VerizonDigital/vflow/releases/download/v0.7.0/vflow-0.7.0-x86_64.deb)
+
+Once you installed you need to configure the below files, for more information check [configuration guide](/docs/config.md):
+```
+/etc/vflow/vflow.conf
+/etc/vflow/mq.conf
+```
+You can start the service by the below:
+```
+service vflow start
 ```
 
 ## Docker
@@ -66,8 +88,12 @@ docker pull spotify/kafka
 3. You can run them like below:
 ```
 docker run -d -p 2181:2181 -p 9092:9092 spotify/kafka
-docker run -d -p 4739:4739 -p 6343:6343 -p 8081:8081 -e VFLOW_KAFKA_BROKERS="172.17.0.1:9092" mehrdadrad/vflow
+docker run -d -p 4739:4739 -p 4729:4729 -p 6343:6343 -p 8081:8081 -e VFLOW_KAFKA_BROKERS="172.17.0.1:9092" mehrdadrad/vflow
 ```
+
+## Slack
+
+You can also join the vFlow Team on Slack [https://vflowworkspace.slack.com](https://join.slack.com/t/vflowworkspace/shared_invite/enQtNTAwNjMyNzg0MDY5LWJlNGExZDNiYThmYjkyNmM1NDAyZGY4NmMyZjYwYmE0ZjAzZjA2MTZlZjRkYjY3Njc1MDJjYTlhZDU2OTk2MGE) and chat with developers.
 
 ## License
 Licensed under the Apache License, Version 2.0 (the "License")

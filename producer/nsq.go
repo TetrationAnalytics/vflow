@@ -39,14 +39,18 @@ type NSQ struct {
 
 // NSQConfig represents NSQ configuration
 type NSQConfig struct {
-	Broker string `json:"broker"`
+	Server string `yaml:"server"`
 }
 
 func (n *NSQ) setup(configFile string, logger *log.Logger) error {
-	var err error
+	var (
+		err error
+		cfg = nsq.NewConfig()
+	)
+
 	// set default values
 	n.config = NSQConfig{
-		Broker: "localhost:4150",
+		Server: "localhost:4150",
 	}
 
 	// load configuration if available
@@ -54,7 +58,15 @@ func (n *NSQ) setup(configFile string, logger *log.Logger) error {
 		logger.Println(err)
 	}
 
-	n.producer, _ = nsq.NewProducer(n.config.Broker, nil)
+	cfg.ClientID = "vflow.nsq"
+
+	n.producer, err = nsq.NewProducer(n.config.Server, cfg)
+	if err != nil {
+		logger.Println(err)
+		return err
+	}
+
+	n.logger = logger
 
 	return nil
 }
@@ -66,13 +78,16 @@ func (n *NSQ) inputMsg(topic string, mCh chan []byte, ec *uint64) {
 		ok  bool
 	)
 
+	n.logger.Printf("start producer: NSQ, server: %+v, topic: %s\n",
+		n.config.Server, topic)
+
 	for {
 		msg, ok = <-mCh
 		if !ok {
 			break
 		}
 
-		err = n.producer.Publish(topic, append([]byte{}, msg...))
+		err = n.producer.Publish(topic, msg)
 		if err != nil {
 			n.logger.Println(err)
 			*ec++

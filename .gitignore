@@ -1,0 +1,12 @@
+stress/
+vflow/vflow
+.DS_Store
+
+# VSCode
+.vs/
+
+# Intellij
+.idea/
+*.iml
+*.iws
+*~

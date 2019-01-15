@@ -27,8 +27,7 @@ import (
 	"errors"
 	"io"
 	"net"
-
-	"github.com/TetrationAnalytics/vflow/packet"
+	"time"
 )
 
 const (
@@ -53,8 +52,11 @@ type SFDatagram struct {
 	SequenceNo uint32 // Sequence of sFlow Datagrams
 	SysUpTime  uint32 // Current time (in milliseconds since device last booted
 	SamplesNo  uint32 // Number of samples
+	Samples    []Sample
+	Counters   []Counter
 
 	IPAddress net.IP // Agent IP address
+	ColTime   int64  // Collected time
 }
 
 // SFSampledHeader represents sFlow sample header
@@ -66,13 +68,14 @@ type SFSampledHeader struct {
 	HeaderBytes    []byte // Header bytes
 }
 
-// Message represents flow sample decoded packet
-type Message struct {
-	Header    *SFDatagram
-	ExtSWData *ExtSwitchData
-	Sample    *FlowSample
-	Packet    *packet.Packet
-}
+// Sample represents sFlow sample flow
+type Sample interface{}
+
+// Counter represents sFlow counters
+type Counter interface{}
+
+// Record represents sFlow sample record record
+type Record interface{}
 
 var (
 	errNoneEnterpriseStandard = errors.New("the enterprise is not standard sflow data")
@@ -89,11 +92,14 @@ func NewSFDecoder(r io.ReadSeeker, f []uint32) SFDecoder {
 }
 
 // SFDecode decodes sFlow data
-func (d *SFDecoder) SFDecode() ([]interface{}, error) {
+func (d *SFDecoder) SFDecode() (*SFDatagram, error) {
 	datagram, err := d.sfHeaderDecode()
 	if err != nil {
 		return nil, err
 	}
+
+	datagram.Samples = []Sample{}
+	datagram.Counters = []Counter{}
 
 	for i := uint32(0); i < datagram.SamplesNo; i++ {
 		sfTypeFormat, sfDataLength, err := d.getSampleInfo()
@@ -108,19 +114,24 @@ func (d *SFDecoder) SFDecode() ([]interface{}, error) {
 
 		switch sfTypeFormat {
 		case DataFlowSample:
-			h, err := decodeFlowSample(d.reader)
-			h = append(h, datagram)
-			return h, err
+			d, err := decodeFlowSample(d.reader)
+			if err != nil {
+				return datagram, err
+			}
+			datagram.Samples = append(datagram.Samples, d)
 		case DataCounterSample:
-			d.reader.Seek(int64(sfDataLength), 1)
+			d, err := decodeFlowCounter(d.reader)
+			if err != nil {
+				return datagram, err
+			}
+			datagram.Counters = append(datagram.Counters, d)
 		default:
 			d.reader.Seek(int64(sfDataLength), 1)
-
 		}
 
 	}
 
-	return nil, nil
+	return datagram, nil
 }
 
 func (d *SFDecoder) sfHeaderDecode() (*SFDatagram, error) {
@@ -164,6 +175,8 @@ func (d *SFDecoder) sfHeaderDecode() (*SFDatagram, error) {
 	if err = read(d.reader, &datagram.SamplesNo); err != nil {
 		return nil, err
 	}
+
+	datagram.ColTime = time.Now().Unix()
 
 	return datagram, nil
 }

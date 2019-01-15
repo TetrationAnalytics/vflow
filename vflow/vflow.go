@@ -27,6 +27,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"runtime"
 	"sync"
 	"syscall"
 )
@@ -36,7 +37,7 @@ var (
 	logger *log.Logger
 )
 
-type protocol interface {
+type proto interface {
 	run()
 	shutdown()
 }
@@ -48,6 +49,7 @@ func main() {
 	)
 
 	opts = GetOptions()
+	runtime.GOMAXPROCS(opts.GetCPU())
 
 	opts.Logger.Println("In here 1") // TODO_REMOVE
 	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
@@ -56,33 +58,29 @@ func main() {
 
 	opts.Logger.Println("In here 2") // TODO_REMOVE
 	ipfix := NewIPFIX()
-
-	opts.Logger.Println("In here 3") // TODO_REMOVE
+	netflow5 := NewNetflowV5()
 	netflow9 := NewNetflowV9()
 
-	opts.Logger.Println("In here 4") // TODO_REMOVE
-
-	protocols := []protocol{sFlow, ipfix, netflow9}
+	protos := []proto{sFlow, ipfix, netflow5, netflow9}
 
 	opts.Logger.Println("In here 5") // TODO_REMOVE
-	for _, p := range protocols {
+	for _, p := range protos {
 		wg.Add(1)
-		go func(p protocol) {
+		go func(p proto) {
 			defer wg.Done()
 			p.run()
 		}(p)
 	}
 
-	opts.Logger.Println("In here 6") // TODO_REMOVE
-	go statsHTTPServer(ipfix, sFlow, netflow9)
+	go statsHTTPServer(ipfix, sFlow, netflow5, netflow9)
 
 	opts.Logger.Println("In here 7") // TODO_REMOVE
 	<-signalCh
 
 	opts.Logger.Println("In here 8") // TODO_REMOVE
-	for _, p := range protocols {
+	for _, p := range proto {
 		wg.Add(1)
-		go func(p protocol) {
+		go func(p proto) {
 			defer wg.Done()
 			p.shutdown()
 		}(p)

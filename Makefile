@@ -1,6 +1,9 @@
-PACKAGES=$(shell find . -name '*.go' -print0 | xargs -0 -n1 dirname | sort --unique)
-GOFILES= vflow.go ipfix.go sflow.go netflow_v9.go options.go stats.go marshal_pb.go
-LDFLAGS= -ldflags "-X main.version=0.3.1"
+VERSION= 0.7.0
+PACKAGES= $(shell find . -name '*.go' -print0 | xargs -0 -n1 dirname | sort --unique)
+LDFLAGS= -ldflags "-X main.version=${VERSION}"
+DEBPATH= scripts/dpkg
+RPMPATH= scripts/rpmbuild
+ARCH=`uname -m`
 
 default: test
 
@@ -10,16 +13,16 @@ test:
 bench:
 	go test -v ./... -bench=. -timeout 2m
 
-run:
-	cd vflow; go run $(GOFILES) -sflow-workers 100 -ipfix-workers 100
+run: build
+	cd vflow; ./vflow -sflow-workers 100 -ipfix-workers 100
 
-debug:
-	cd vflow; go run $(GOFILES) -sflow-workers 100 -ipfix-workers 100 -verbose=true
+debug: build
+	cd vflow; ./vflow -sflow-workers 100 -ipfix-workers 100 -verbose=true
 
-gctrace:
-	cd vflow; env GODEBUG=gctrace=1 go run $(GOFILES) -sflow-workers 100 -ipfix-workers 100
+gctrace: build
+	cd vflow; env GODEBUG=gctrace=1 ./vflow -sflow-workers 100 -ipfix-workers 100
 
-lint:	
+lint:
 	golint ./...
 
 cyclo:
@@ -37,4 +40,40 @@ depends:
 	go get -d ./...
 
 build: depends
-	cd vflow; go build $(LDFLAGS) -o vflow $(GOFILES)
+	cd vflow; go build $(LDFLAGS)
+	cd stress; go build
+
+dpkg: build
+	mkdir -p ${DEBPATH}/etc/init.d ${DEBPATH}/etc/logrotate.d
+	mkdir -p ${DEBPATH}/etc/vflow ${DEBPATH}/usr/share/doc/vflow
+	mkdir -p ${DEBPATH}/usr/bin ${DEBPATH}/usr/local/vflow
+	sed -i 's/%VERSION%/${VERSION}/' ${DEBPATH}/DEBIAN/control
+	cp vflow/vflow ${DEBPATH}/usr/bin/
+	cp stress/stress ${DEBPATH}/usr/bin/vflow_stress
+	cp scripts/vflow.service ${DEBPATH}/etc/init.d/vflow
+	cp scripts/vflow.logrotate ${DEBPATH}/etc/logrotate.d/vflow
+	cp scripts/vflow.conf ${DEBPATH}/etc/vflow/vflow.conf
+	cp scripts/kafka.conf ${DEBPATH}/etc/vflow/mq.conf
+	cp scripts/ipfix.elements ${DEBPATH}/etc/vflow/
+	cp ${DEBPATH}/DEBIAN/copyright ${DEBPATH}/usr/share/doc/vflow/
+	cp LICENSE ${DEBPATH}/usr/share/doc/vflow/license
+	dpkg-deb -b ${DEBPATH}
+	mv ${DEBPATH}.deb scripts/vflow-${VERSION}-${ARCH}.deb
+	sed -i 's/${VERSION}/%VERSION%/' ${DEBPATH}/DEBIAN/control
+
+rpm: build
+	sed -i 's/%VERSION%/${VERSION}/' ${RPMPATH}/SPECS/vflow.spec
+	rm -rf ${RPMPATH}/SOURCES/
+	mkdir ${RPMPATH}/SOURCES/
+	cp vflow/vflow ${RPMPATH}/SOURCES/
+	cp stress/stress ${RPMPATH}/SOURCES/vflow_stress
+	cp scripts/vflow.conf ${RPMPATH}/SOURCES/
+	cp scripts/vflow.service ${RPMPATH}/SOURCES/
+	cp scripts/vflow.logrotate ${RPMPATH}/SOURCES/
+	cp scripts/kafka.conf ${RPMPATH}/SOURCES/mq.conf
+	cp scripts/ipfix.elements ${RPMPATH}/SOURCES/
+	cp LICENSE ${RPMPATH}/SOURCES/license
+	cp NOTICE ${RPMPATH}/SOURCES/notice
+	apt-get install rpm
+	rpmbuild -ba ${RPMPATH}/SPECS/vflow.spec --define "_topdir `pwd`/scripts/rpmbuild"
+	sed -i 's/${VERSION}/%VERSION%/' ${RPMPATH}/SPECS/vflow.spec

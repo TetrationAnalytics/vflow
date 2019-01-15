@@ -23,6 +23,8 @@
 package netflow9
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -30,6 +32,8 @@ import (
 	"github.com/TetrationAnalytics/vflow/ipfix"
 	"github.com/TetrationAnalytics/vflow/reader"
 )
+
+type nonfatalError error
 
 // PacketHeader represents Netflow v9  packet header
 type PacketHeader struct {
@@ -237,20 +241,28 @@ func (f *TemplateFieldSpecifier) unmarshal(r *reader.Reader) error {
 // |        Field Type N           |         Field Length N        |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-func (tr *TemplateRecord) unmarshal(r *reader.Reader) {
+func (tr *TemplateRecord) unmarshal(r *reader.Reader) error {
 	var (
-		th = TemplateHeader{}
-		tf = TemplateFieldSpecifier{}
+		th  = TemplateHeader{}
+		tf  = TemplateFieldSpecifier{}
+		err error
 	)
 
-	th.unmarshal(r)
+	if err = th.unmarshal(r); err != nil {
+		return err
+	}
+
 	tr.TemplateID = th.TemplateID
 	tr.FieldCount = th.FieldCount
 
 	for i := th.FieldCount; i > 0; i-- {
-		tf.unmarshal(r)
+		if err = tf.unmarshal(r); err != nil {
+			return err
+		}
 		tr.FieldSpecifiers = append(tr.FieldSpecifiers, tf)
 	}
+
+	return nil
 }
 
 // 0                   1                   2                   3
@@ -271,46 +283,92 @@ func (tr *TemplateRecord) unmarshal(r *reader.Reader) {
 // |     Option M Field Length     |           Padding             |
 // +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 
-func (tr *TemplateRecord) unmarshalOpts(r *reader.Reader) {
+func (tr *TemplateRecord) unmarshalOpts(r *reader.Reader) error {
 	var (
-		th = TemplateHeader{}
-		tf = TemplateFieldSpecifier{}
+		th  = TemplateHeader{}
+		tf  = TemplateFieldSpecifier{}
+		err error
 	)
 
-	th.unmarshalOpts(r)
+	if err = th.unmarshalOpts(r); err != nil {
+		return err
+	}
+
 	tr.TemplateID = th.TemplateID
 
 	for i := th.OptionScopeLen / 4; i > 0; i-- {
-		tf.unmarshal(r)
+		if err = tf.unmarshal(r); err != nil {
+			return err
+		}
+
 		tr.ScopeFieldSpecifiers = append(tr.FieldSpecifiers, tf)
 	}
 
 	for i := th.OptionLen / 4; i > 0; i-- {
-		tf.unmarshal(r)
+		if err = tf.unmarshal(r); err != nil {
+			return err
+		}
+
 		tr.FieldSpecifiers = append(tr.FieldSpecifiers, tf)
 	}
 
+	return nil
 }
 
-func decodeData(r *reader.Reader, tr TemplateRecord) []DecodedField {
+func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 	var (
 		fields []DecodedField
+		err    error
 		b      []byte
 	)
 
-	for i := 0; i < len(tr.FieldSpecifiers); i++ {
-		b, _ = r.Read(int(tr.FieldSpecifiers[i].Length))
-		m := ipfix.InfoModel[ipfix.ElementKey{
+	r := d.reader
+
+	for i := 0; i < len(tr.ScopeFieldSpecifiers); i++ {
+		b, err = r.Read(int(tr.ScopeFieldSpecifiers[i].Length))
+		if err != nil {
+			return nil, err
+		}
+
+		m, ok := ipfix.InfoModel[ipfix.ElementKey{
 			0,
-			tr.FieldSpecifiers[i].ElementID,
+			tr.ScopeFieldSpecifiers[i].ElementID,
 		}]
+
+		if !ok {
+			return nil, nonfatalError(fmt.Errorf("Netflow element key (%d) not exist (scope)",
+				tr.ScopeFieldSpecifiers[i].ElementID))
+		}
+
 		fields = append(fields, DecodedField{
 			ID:    m.FieldID,
-			Value: ipfix.Interpret(b, m.Type),
+			Value: ipfix.Interpret(&b, m.Type),
 		})
 	}
 
-	return fields
+	for i := 0; i < len(tr.FieldSpecifiers); i++ {
+		b, err = r.Read(int(tr.FieldSpecifiers[i].Length))
+		if err != nil {
+			return nil, err
+		}
+
+		m, ok := ipfix.InfoModel[ipfix.ElementKey{
+			0,
+			tr.FieldSpecifiers[i].ElementID,
+		}]
+
+		if !ok {
+			return nil, nonfatalError(fmt.Errorf("Netflow element key (%d) not exist",
+				tr.FieldSpecifiers[i].ElementID))
+		}
+
+		fields = append(fields, DecodedField{
+			ID:    m.FieldID,
+			Value: ipfix.Interpret(&b, m.Type),
+		})
+	}
+
+	return fields, nil
 }
 
 // NewDecoder constructs a decoder
@@ -318,66 +376,115 @@ func NewDecoder(raddr net.IP, b []byte) *Decoder {
 	return &Decoder{raddr, reader.NewReader(b)}
 }
 
-// Decode decodes the Netflow raw data
+// Decode decodes the flow records
 func (d *Decoder) Decode(mem MemCache) (*Message, error) {
-	var (
-		nextSet int
-		msg     = new(Message)
-		err     error
-	)
+	var msg = new(Message)
 
-	// Netflow Message Header decoding
-	if err = msg.Header.unmarshal(d.reader); err != nil {
+	// IPFIX Message Header decoding
+	if err := msg.Header.unmarshal(d.reader); err != nil {
 		return nil, err
 	}
-	// Netflow Message Header validation
-	if err = msg.Header.validate(); err != nil {
+	// IPFIX Message Header validation
+	if err := msg.Header.validate(); err != nil {
 		return nil, err
 	}
 
 	// Add source IP address as Agent ID
 	msg.AgentID = d.raddr.String()
 
+	// In case there are multiple non-fatal errors, collect them and report all of them.
+	// The rest of the received sets will still be interpreted, until a fatal error is encountered.
+	// A non-fatal error is for example an illegal data record or unknown template id.
+	var decodeErrors []error
 	for d.reader.Len() > 4 {
-
-		setHeader := new(SetHeader)
-		setHeader.unmarshal(d.reader)
-
-		if setHeader.Length < 4 {
-			return nil, io.ErrUnexpectedEOF
-		}
-
-		switch {
-		case setHeader.FlowSetID == 0:
-			// Template set
-			tr := TemplateRecord{}
-			tr.unmarshal(d.reader)
-			mem.insert(tr.TemplateID, d.raddr, tr)
-		case setHeader.FlowSetID == 1:
-			// Option set
-			tr := TemplateRecord{}
-			tr.unmarshalOpts(d.reader)
-			mem.insert(tr.TemplateID, d.raddr, tr)
-		case setHeader.FlowSetID >= 4 && setHeader.FlowSetID <= 255:
-			// Reserved
-		default:
-			// data
-			tr, ok := mem.retrieve(setHeader.FlowSetID, d.raddr)
-			if !ok {
-				return msg, fmt.Errorf("%s unknown netflow v9 template id# %d",
-					d.raddr.String(),
-					setHeader.FlowSetID,
-				)
+		if err := d.decodeSet(mem, msg); err != nil {
+			switch err.(type) {
+			case nonfatalError:
+				decodeErrors = append(decodeErrors, err)
+			default:
+				return nil, err
 			}
+		}
+	}
 
-			// data records
-			nextSet = d.reader.Len() - int(setHeader.Length) + 4
-			for d.reader.Len() > nextSet {
-				data := decodeData(d.reader, tr)
+	return msg, combineErrors(decodeErrors...)
+}
+
+func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
+	startCount := d.reader.ReadCount()
+
+	setHeader := new(SetHeader)
+	if err := setHeader.unmarshal(d.reader); err != nil {
+		return err
+	}
+	if setHeader.Length < 4 {
+		return io.ErrUnexpectedEOF
+	}
+
+	var tr TemplateRecord
+	var err error
+	// This check is somewhat redundant with the switch-clause below, but the retrieve() operation should not be executed inside the loop.
+	if setHeader.FlowSetID > 255 {
+		var ok bool
+		tr, ok = mem.retrieve(setHeader.FlowSetID, d.raddr)
+		if !ok {
+			err = nonfatalError(fmt.Errorf("%s unknown netflow template id# %d",
+				d.raddr.String(),
+				setHeader.FlowSetID,
+			))
+		}
+	}
+
+	// the next set should be greater than 4 bytes otherwise that's padding
+	for err == nil && (int(setHeader.Length)-(d.reader.ReadCount()-startCount) > 4) && d.reader.Len() > 4 {
+		if setId := setHeader.FlowSetID; setId == 0 || setId == 1 {
+			// Template record or template option record
+			tr := TemplateRecord{}
+			if setId == 0 {
+				err = tr.unmarshal(d.reader)
+			} else {
+				err = tr.unmarshalOpts(d.reader)
+			}
+			if err == nil {
+				mem.insert(tr.TemplateID, d.raddr, tr)
+			}
+		} else if setId >= 4 && setId <= 255 {
+			// Reserved set, do not read any records
+			break
+		} else {
+			// Data set
+			var data []DecodedField
+			data, err = d.decodeData(tr)
+			if err == nil {
 				msg.DataSets = append(msg.DataSets, data)
 			}
 		}
 	}
 
-	return msg, nil
+	// Skip the rest of the set in order to properly continue with the next set
+	// This is necessary if the set is padded, has a reserved set ID, or a nonfatal error occurred
+	leftoverBytes := int(setHeader.Length) - (d.reader.ReadCount() - startCount)
+	if leftoverBytes > 0 {
+		_, skipErr := d.reader.Read(int(leftoverBytes))
+		if skipErr != nil {
+			err = skipErr
+		}
+	}
+	return err
+}
+
+func combineErrors(errorSlice ...error) (err error) {
+	switch len(errorSlice) {
+	case 0:
+	case 1:
+		err = errorSlice[0]
+	default:
+		var errMsg bytes.Buffer
+		errMsg.WriteString("Multiple errors:")
+		for _, subError := range errorSlice {
+			errMsg.WriteString("\n- " + subError.Error())
+		}
+		err = errors.New(errMsg.String())
+	}
+	return
 }

@@ -26,7 +26,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 )
 
@@ -54,22 +53,18 @@ type TSDBResp struct {
 }
 
 // Netflow ingests flow's stats to TSDB
-func (t TSDB) Netflow() error {
+func (t TSDB) Netflow(hostname string) error {
 	var (
 		dps    []TSDBDataPoint
 		values []int64
 	)
 
-	flow, lastFlow, err := getFlow(t.VHost)
+	flow, lastFlow, err := getFlow(t.VHost, hostname)
 	if err != nil {
 		return err
 	}
 
 	delta := flow.Timestamp - lastFlow.Timestamp
-	hostname, err := os.Hostname()
-	if err != nil {
-		return err
-	}
 
 	metrics := [][]string{
 		{"ipfix", "udp.rate"},
@@ -107,25 +102,18 @@ func (t TSDB) Netflow() error {
 
 	}
 
-	if err = t.put(dps); err != nil {
-		return err
-	}
+	err = t.put(dps)
 
-	return nil
+	return err
 }
 
 // System ingests system's stats to TSDB
-func (t TSDB) System() error {
+func (t TSDB) System(hostname string) error {
 	var dps []TSDBDataPoint
 
 	sys := new(Sys)
 	client := NewHTTP()
 	err := client.Get(t.VHost+"/sys", sys)
-	if err != nil {
-		return err
-	}
-
-	hostname, err := os.Hostname()
 	if err != nil {
 		return err
 	}
@@ -163,11 +151,9 @@ func (t TSDB) System() error {
 
 	}
 
-	if err = t.put(dps); err != nil {
-		return err
-	}
+	err = t.put(dps)
 
-	return nil
+	return err
 }
 
 func (t TSDB) put(dps []TSDBDataPoint) error {
