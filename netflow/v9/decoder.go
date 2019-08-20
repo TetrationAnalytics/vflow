@@ -76,9 +76,10 @@ type TemplateRecord struct {
 
 // DecodedField represents a decoded field
 type DecodedField struct {
-	ID    uint16
-	Value interface{}
-	Name  string
+	ID     uint16
+	Value  interface{}
+	Name   string
+	Source net.IP
 }
 
 // Decoder represents Netflow payload and remote address
@@ -342,9 +343,10 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		}
 
 		fields = append(fields, DecodedField{
-			ID:    m.FieldID,
-			Value: ipfix.Interpret(&b, m.Type),
-			Name:  m.Name,
+			ID:     m.FieldID,
+			Value:  ipfix.Interpret(&b, m.Type),
+			Name:   m.Name,
+			Source: d.raddr,
 		})
 	}
 
@@ -365,9 +367,10 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		}
 
 		fields = append(fields, DecodedField{
-			ID:    m.FieldID,
-			Value: ipfix.Interpret(&b, m.Type),
-			Name:  m.Name,
+			ID:     m.FieldID,
+			Value:  ipfix.Interpret(&b, m.Type),
+			Name:   m.Name,
+			Source: d.raddr,
 		})
 	}
 
