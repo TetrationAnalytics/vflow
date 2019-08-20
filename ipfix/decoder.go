@@ -83,6 +83,8 @@ type DecodedField struct {
 	Value        interface{}
 	EnterpriseNo uint32
 	Name         string
+	TemplateID   uint16
+	Source       net.IP
 }
 
 // SetHeader represents set header fields
@@ -537,6 +539,8 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 			Value:        Interpret(&b, m.Type),
 			EnterpriseNo: tr.ScopeFieldSpecifiers[i].EnterpriseNo,
 			Name:         m.Name,
+			TemplateID:   tr.TemplateID,
+			Source:       d.raddr,
 		})
 	}
 
@@ -566,6 +570,8 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 			Value:        Interpret(&b, m.Type),
 			EnterpriseNo: tr.FieldSpecifiers[i].EnterpriseNo,
 			Name:         m.Name,
+			TemplateID:   tr.TemplateID,
+			Source:       d.raddr,
 		})
 	}
 
