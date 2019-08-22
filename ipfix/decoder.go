@@ -182,7 +182,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 	}
 
 	// the next set should be greater than 4 bytes otherwise that's padding
-	for err == nil && setHeader.Length > uint16(d.reader.ReadCount()-startCount) && d.reader.Len() > 4 {
+	for err == nil && (int(setHeader.Length)-(d.reader.ReadCount()-startCount) > 4) && d.reader.Len() > 4 {
 		if setId := setHeader.SetID; setId == 2 || setId == 3 {
 			// Template record or template option record
 
@@ -216,9 +216,9 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 
 	// Skip the rest of the set in order to properly continue with the next set
 	// This is necessary if the set is padded, has a reserved set ID, or a nonfatal error occurred
-	leftoverBytes := setHeader.Length - uint16(d.reader.ReadCount()-startCount)
+	leftoverBytes := int(setHeader.Length) - (d.reader.ReadCount() - startCount)
 	if leftoverBytes > 0 {
-		_, skipErr := d.reader.Read(int(leftoverBytes))
+		_, skipErr := d.reader.Read(leftoverBytes)
 		if skipErr != nil {
 			err = skipErr
 		}
