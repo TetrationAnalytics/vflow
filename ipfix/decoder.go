@@ -520,8 +520,7 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		}]
 
 		if !ok {
-			return nil, nonfatalError(fmt.Errorf("IPFIX element key (%d) not exist (scope)",
-				tr.ScopeFieldSpecifiers[i].ElementID))
+			continue
 		}
 
 		readLength, err = d.getDataLength(tr.ScopeFieldSpecifiers[i].Length, m.Type)
@@ -551,8 +550,7 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		}]
 
 		if !ok {
-			return nil, nonfatalError(fmt.Errorf("IPFIX element key (%d) not exist",
-				tr.FieldSpecifiers[i].ElementID))
+			continue
 		}
 
 		readLength, err = d.getDataLength(tr.FieldSpecifiers[i].Length, m.Type)
