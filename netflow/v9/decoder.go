@@ -338,8 +338,7 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		}]
 
 		if !ok {
-			return nil, nonfatalError(fmt.Errorf("Netflow element key (%d) not exist (scope)",
-				tr.ScopeFieldSpecifiers[i].ElementID))
+			continue
 		}
 
 		fields = append(fields, DecodedField{
@@ -362,8 +361,7 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		}]
 
 		if !ok {
-			return nil, nonfatalError(fmt.Errorf("Netflow element key (%d) not exist",
-				tr.FieldSpecifiers[i].ElementID))
+			continue
 		}
 
 		fields = append(fields, DecodedField{
