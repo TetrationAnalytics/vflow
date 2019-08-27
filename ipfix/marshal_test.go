@@ -80,7 +80,7 @@ var mockDecodedMsg = Message{
 	},
 }
 
-func TestJSONMarshal(t *testing.T) {
+func testJSONMarshal(t *testing.T) {
 	buf := new(bytes.Buffer)
 	msg := TestMessage{}
 
