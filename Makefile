@@ -8,7 +8,7 @@ ARCH=`uname -m`
 default: test
 
 test:
-	go test -v ./... -timeout 1m
+	go test -count=1 -v ./... -timeout 1m
 
 bench:
 	go test -v ./... -bench=. -timeout 2m
