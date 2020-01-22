@@ -28,6 +28,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/time/rate"
+
 	"github.com/VerizonDigital/vflow/mirror"
 )
 
@@ -79,7 +81,7 @@ func NewIPFIX(raddr net.IP) (*IPFIX, error) {
 
 	return &IPFIX{
 		conn:      conn,
-		ch:        make(chan Packet, 10000),
+		ch:        make(chan Packet, 1000000),
 		vflow:     raddr,
 		MaxRouter: 10,
 		RateLimit: 25 * 10e3,
@@ -129,18 +131,16 @@ func (i *IPFIX) Run() {
 
 func (i *IPFIX) sendData() {
 	var (
-		throttle <-chan time.Time
 		packets  = i.genPackets(dataType)
 	)
 
-	if i.RateLimit > 0 {
-		throttle = time.Tick(time.Duration(1e6/(i.RateLimit)) * time.Microsecond)
-	}
+	var limiter = rate.NewLimiter(rate.Limit(i.RateLimit), 1000)
 
 	for {
 		for j := range packets {
-			<-throttle
-			i.ch <- packets[j]
+			if limiter.Allow() {
+				i.ch <- packets[j]
+			}
 		}
 	}
 }
