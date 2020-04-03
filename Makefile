@@ -4,11 +4,17 @@ LDFLAGS= -ldflags "-X main.version=${VERSION}"
 DEBPATH= scripts/dpkg
 RPMPATH= scripts/rpmbuild
 ARCH=`uname -m`
+BUILD_OS := $(shell uname -s)
 
 default: test
 
 test:
-	go test -count=1 -v ./... -timeout 1m
+ifeq ($(BUILD_OS),Darwin)
+	go test -count=1 -v `go list ./... | grep -v "vflow/vflow" | grep -v "mirror"` -timeout 1m
+endif
+ifeq ($(BUILD_OS),Linux)
+	go test -count=1 -v `go list ./... | grep -v "mirror"` -timeout 1m
+endif
 
 bench:
 	go test -v ./... -bench=. -timeout 2m
