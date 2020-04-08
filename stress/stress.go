@@ -80,15 +80,6 @@ func main() {
 	}
 	ipfix.Run()
 
-	//wg.Add(1)
-	//go func() {
-	//	defer wg.Done()
-	//	sflow, _ := hammer.NewSFlow(vflow)
-	//	sflow.Port = opts.sflowPort
-	//	sflow.RateLimit = opts.sflowRateLimit
-	//	sflow.Run()
-	//}()
-
 	log.Printf("Stress is attacking %s target ...", opts.vflowAddr)
 
 	wg.Wait()
