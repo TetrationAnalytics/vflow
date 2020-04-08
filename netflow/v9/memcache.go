@@ -28,6 +28,7 @@ import (
 	"hash/fnv"
 	"io/ioutil"
 	"net"
+	"sort"
 	"sync"
 	"time"
 )
@@ -78,27 +79,32 @@ func GetCache(cacheFile string) MemCache {
 	return m
 }
 
-func (m MemCache) getShard(id uint16, addr net.IP) (*TemplatesShard, uint32) {
-	b := make([]byte, 2)
-	binary.BigEndian.PutUint16(b, id)
-	key := append(addr, b...)
+func (m MemCache) getShard(id uint16, addr net.IP, srcID uint32) (*TemplatesShard, uint32) {
+	bSrcID := make([]byte, 4)
+	btemplateID := make([]byte, 2)
+	binary.BigEndian.PutUint32(bSrcID, srcID)
+	binary.BigEndian.PutUint16(btemplateID, id)
+
+	var key []byte
+	key = append(key, addr...)
+	key = append(key, bSrcID...)
+	key = append(key, btemplateID...)
 
 	hash := fnv.New32()
 	hash.Write(key)
 	hSum32 := hash.Sum32()
-
 	return m[uint(hSum32)%uint(shardNo)], hSum32
 }
 
-func (m *MemCache) insert(id uint16, addr net.IP, tr TemplateRecord) {
-	shard, key := m.getShard(id, addr)
+func (m *MemCache) insert(id uint16, addr net.IP, tr TemplateRecord, srcID uint32) {
+	shard, key := m.getShard(id, addr, srcID)
 	shard.Lock()
 	defer shard.Unlock()
 	shard.Templates[key] = Data{tr, time.Now().Unix()}
 }
 
-func (m *MemCache) retrieve(id uint16, addr net.IP) (TemplateRecord, bool) {
-	shard, key := m.getShard(id, addr)
+func (m *MemCache) retrieve(id uint16, addr net.IP, srcID uint32) (TemplateRecord, bool) {
+	shard, key := m.getShard(id, addr, srcID)
 	shard.RLock()
 	defer shard.RUnlock()
 	v, ok := shard.Templates[key]
@@ -124,4 +130,22 @@ func (m MemCache) Dump(cacheFile string) error {
 	}
 
 	return nil
+}
+
+// Fill a slice with all known set ids. This is inefficient and is only used for error reporting or debugging.
+func (m MemCache) allSetIds() []int {
+	num := 0
+	for _, shard := range m {
+		num += len(shard.Templates)
+	}
+	result := make([]int, 0, num)
+	for _, shard := range m {
+		shard.RLock()
+		for _, set := range shard.Templates {
+			result = append(result, int(set.Template.TemplateID))
+		}
+		shard.RUnlock()
+	}
+	sort.Ints(result)
+	return result
 }

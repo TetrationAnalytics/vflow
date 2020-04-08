@@ -76,8 +76,10 @@ type TemplateRecord struct {
 
 // DecodedField represents a decoded field
 type DecodedField struct {
-	ID    uint16
-	Value interface{}
+	ID     uint16
+	Value  interface{}
+	Name   string
+	Source net.IP
 }
 
 // Decoder represents Netflow payload and remote address
@@ -301,7 +303,7 @@ func (tr *TemplateRecord) unmarshalOpts(r *reader.Reader) error {
 			return err
 		}
 
-		tr.ScopeFieldSpecifiers = append(tr.FieldSpecifiers, tf)
+		tr.ScopeFieldSpecifiers = append(tr.ScopeFieldSpecifiers, tf)
 	}
 
 	for i := th.OptionLen / 4; i > 0; i-- {
@@ -336,13 +338,14 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		}]
 
 		if !ok {
-			return nil, nonfatalError(fmt.Errorf("Netflow element key (%d) not exist (scope)",
-				tr.ScopeFieldSpecifiers[i].ElementID))
+			continue
 		}
 
 		fields = append(fields, DecodedField{
-			ID:    m.FieldID,
-			Value: ipfix.Interpret(&b, m.Type),
+			ID:     m.FieldID,
+			Value:  ipfix.Interpret(&b, m.Type),
+			Name:   m.Name,
+			Source: d.raddr,
 		})
 	}
 
@@ -358,13 +361,14 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		}]
 
 		if !ok {
-			return nil, nonfatalError(fmt.Errorf("Netflow element key (%d) not exist",
-				tr.FieldSpecifiers[i].ElementID))
+			continue
 		}
 
 		fields = append(fields, DecodedField{
-			ID:    m.FieldID,
-			Value: ipfix.Interpret(&b, m.Type),
+			ID:     m.FieldID,
+			Value:  ipfix.Interpret(&b, m.Type),
+			Name:   m.Name,
+			Source: d.raddr,
 		})
 	}
 
@@ -426,11 +430,12 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 	// This check is somewhat redundant with the switch-clause below, but the retrieve() operation should not be executed inside the loop.
 	if setHeader.FlowSetID > 255 {
 		var ok bool
-		tr, ok = mem.retrieve(setHeader.FlowSetID, d.raddr)
+		tr, ok = mem.retrieve(setHeader.FlowSetID, d.raddr, msg.Header.SrcID)
 		if !ok {
-			err = nonfatalError(fmt.Errorf("%s unknown netflow template id# %d",
+			err = nonfatalError(fmt.Errorf("%s unknown netflow template id# %d from source ID: %d",
 				d.raddr.String(),
 				setHeader.FlowSetID,
+				msg.Header.SrcID,
 			))
 		}
 	}
@@ -446,7 +451,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 				err = tr.unmarshalOpts(d.reader)
 			}
 			if err == nil {
-				mem.insert(tr.TemplateID, d.raddr, tr)
+				mem.insert(tr.TemplateID, d.raddr, tr, msg.Header.SrcID)
 			}
 		} else if setId >= 4 && setId <= 255 {
 			// Reserved set, do not read any records

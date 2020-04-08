@@ -82,6 +82,9 @@ type DecodedField struct {
 	ID           uint16
 	Value        interface{}
 	EnterpriseNo uint32
+	Name         string
+	TemplateID   uint16
+	Source       net.IP
 }
 
 // SetHeader represents set header fields
@@ -162,7 +165,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 	// This check is somewhat redundant with the switch-clause below, but the retrieve() operation should not be executed inside the loop.
 	if setHeader.SetID > 255 {
 		var ok bool
-		tr, ok = mem.retrieve(setHeader.SetID, d.raddr)
+		tr, ok = mem.retrieve(setHeader.SetID, d.raddr, msg.Header.DomainID)
 		if !ok {
 			select {
 			case rpcChan <- RPCRequest{
@@ -171,15 +174,16 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 			}:
 			default:
 			}
-			err = nonfatalError(fmt.Errorf("%s unknown ipfix template id# %d",
+			err = nonfatalError(fmt.Errorf("%s unknown ipfix template id# %d for source ID %d",
 				d.raddr.String(),
 				setHeader.SetID,
+				msg.Header.DomainID,
 			))
 		}
 	}
 
 	// the next set should be greater than 4 bytes otherwise that's padding
-	for err == nil && setHeader.Length > uint16(d.reader.ReadCount()-startCount) && d.reader.Len() > 4 {
+	for err == nil && (int(setHeader.Length)-(d.reader.ReadCount()-startCount) > 4) && d.reader.Len() > 4 {
 		if setId := setHeader.SetID; setId == 2 || setId == 3 {
 			// Template record or template option record
 
@@ -196,7 +200,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 				err = tr.unmarshalOpts(d.reader)
 			}
 			if err == nil {
-				mem.insert(tr.TemplateID, d.raddr, tr)
+				mem.insert(tr.TemplateID, d.raddr, tr, msg.Header.DomainID)
 			}
 		} else if setId >= 4 && setId <= 255 {
 			// Reserved set, do not read any records
@@ -213,9 +217,9 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 
 	// Skip the rest of the set in order to properly continue with the next set
 	// This is necessary if the set is padded, has a reserved set ID, or a nonfatal error occurred
-	leftoverBytes := setHeader.Length - uint16(d.reader.ReadCount()-startCount)
+	leftoverBytes := int(setHeader.Length) - (d.reader.ReadCount() - startCount)
 	if leftoverBytes > 0 {
-		_, skipErr := d.reader.Read(int(leftoverBytes))
+		_, skipErr := d.reader.Read(leftoverBytes)
 		if skipErr != nil {
 			err = skipErr
 		}
@@ -460,7 +464,7 @@ func (tr *TemplateRecord) unmarshalOpts(r *reader.Reader) error {
 		if err := tf.unmarshal(r); err != nil {
 			return err
 		}
-		tr.ScopeFieldSpecifiers = append(tr.FieldSpecifiers, tf)
+		tr.ScopeFieldSpecifiers = append(tr.ScopeFieldSpecifiers, tf)
 	}
 
 	for i := th.FieldCount - th.ScopeFieldCount; i > 0; i-- {
@@ -517,8 +521,7 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		}]
 
 		if !ok {
-			return nil, nonfatalError(fmt.Errorf("IPFIX element key (%d) not exist (scope)",
-				tr.ScopeFieldSpecifiers[i].ElementID))
+			continue
 		}
 
 		readLength, err = d.getDataLength(tr.ScopeFieldSpecifiers[i].Length, m.Type)
@@ -535,6 +538,9 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 			ID:           m.FieldID,
 			Value:        Interpret(&b, m.Type),
 			EnterpriseNo: tr.ScopeFieldSpecifiers[i].EnterpriseNo,
+			Name:         m.Name,
+			TemplateID:   tr.TemplateID,
+			Source:       d.raddr,
 		})
 	}
 
@@ -545,8 +551,7 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		}]
 
 		if !ok {
-			return nil, nonfatalError(fmt.Errorf("IPFIX element key (%d) not exist",
-				tr.FieldSpecifiers[i].ElementID))
+			continue
 		}
 
 		readLength, err = d.getDataLength(tr.FieldSpecifiers[i].Length, m.Type)
@@ -560,8 +565,12 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		}
 
 		fields = append(fields, DecodedField{
-			ID:    m.FieldID,
-			Value: Interpret(&b, m.Type),
+			ID:           m.FieldID,
+			Value:        Interpret(&b, m.Type),
+			EnterpriseNo: tr.FieldSpecifiers[i].EnterpriseNo,
+			Name:         m.Name,
+			TemplateID:   tr.TemplateID,
+			Source:       d.raddr,
 		})
 	}
 
