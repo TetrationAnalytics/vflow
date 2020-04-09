@@ -66,27 +66,19 @@ func main() {
 	)
 
 	wg.Add(1)
-	go func() {
-		var err error
-		defer wg.Done()
-		ipfix, _ := hammer.NewIPFIX(vflow)
-		ipfix.Port = opts.ipfixPort
-		ipfix.Tick, err = time.ParseDuration(opts.ipfixTick)
-		ipfix.RateLimit = opts.ipfixRateLimit
-		if err != nil {
-			log.Fatal(err)
-		}
-		ipfix.Run()
-	}()
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		sflow, _ := hammer.NewSFlow(vflow)
-		sflow.Port = opts.sflowPort
-		sflow.RateLimit = opts.sflowRateLimit
-		sflow.Run()
-	}()
+	var err error
+	defer wg.Done()
+	ipfix, err := hammer.NewIPFIX(vflow)
+	if err != nil {
+		log.Fatal(err)
+	}
+	ipfix.Port = opts.ipfixPort
+	ipfix.Tick, err = time.ParseDuration(opts.ipfixTick)
+	ipfix.RateLimit = opts.ipfixRateLimit
+	if err != nil {
+		log.Fatal(err)
+	}
+	ipfix.Run()
 
 	log.Printf("Stress is attacking %s target ...", opts.vflowAddr)
 
