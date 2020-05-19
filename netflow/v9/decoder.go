@@ -483,7 +483,6 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 			// Reserved set, do not read any records
 			break
 		} else {
-			// Data set
 			if r := remainingBytes(); r < int(tr.Length) {
 				// In this case, the template/data were probably incorrect/corrupted,
 				// the decode data would not be reliable. Return the error and stop
@@ -495,6 +494,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 					setID, srcAgentID, srcID, tr.TemplateID, tr.Length,
 					setHeader.Length, r)
 			}
+			// Data set
 			var data []DecodedField
 			data, err = d.decodeData(tr)
 			if err == nil {
