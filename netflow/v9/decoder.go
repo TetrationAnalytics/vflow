@@ -449,7 +449,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 	// This check is somewhat redundant with the switch-clause below, but the retrieve() operation should not be executed inside the loop.
 	if setID > 255 {
 		var ok bool
-		tr, ok = mem.retrieve(setID, d.raddr, msg.Header.SrcID)
+		tr, ok = mem.retrieve(setID, d.raddr, srcID)
 		if !ok {
 			err = nonfatalError{error: fmt.Errorf("%s unknown netflow template id# %d from srcID: %d",
 				srcAgentID, setID, srcID,
