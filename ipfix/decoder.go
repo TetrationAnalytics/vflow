@@ -172,7 +172,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 	var tr TemplateRecord
 	var err error
 	// This check is somewhat redundant with the switch-clause below, but the retrieve() operation should not be executed inside the loop.
-	if setHeader.SetID > 255 {
+	if setID > 255 {
 		var ok bool
 		tr, ok = mem.retrieve(setID, d.raddr, srcID)
 		if !ok {
@@ -200,7 +200,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 	// the next set should be greater than 4 bytes otherwise that's padding
 	remainingBytes := func() int { return int(setHeader.Length) - (d.reader.ReadCount() - startCount) }
 	for err == nil && remainingBytes() > 4 && d.reader.Len() > 4 {
-		if setId := setHeader.SetID; setId == 2 || setId == 3 {
+		if setID == 2 || setID == 3 {
 			// Template record or template option record
 
 			// Check if only padding is left in this set. A template id of zero indicates padding bytes, which MUST be zero.
@@ -210,7 +210,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 			}
 
 			tr := TemplateRecord{}
-			if setId == 2 {
+			if setID == 2 {
 				err = tr.unmarshal(d.reader)
 			} else {
 				err = tr.unmarshalOpts(d.reader)
@@ -218,7 +218,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 			if err == nil {
 				mem.insert(tr.TemplateID, d.raddr, tr, msg.Header.DomainID)
 			}
-		} else if setId >= 4 && setId <= 255 {
+		} else if setID >= 4 && setID <= 255 {
 			// Reserved set, do not read any records
 			break
 		} else {
@@ -232,6 +232,11 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 					"setHeader.Length: %d remaining bytes %d",
 					setID, srcAgentID, srcID, tr.TemplateID, tr.Length,
 					setHeader.Length, r)
+			}
+			if !tr.validate() {
+				return fmt.Errorf("invalid ipfix template for "+
+					"SetID %d SrcAgentID %s SrcID %d (template Record: %d)",
+					setID, srcAgentID, srcID, tr.TemplateID)
 			}
 			// Data set
 			var data []DecodedField
