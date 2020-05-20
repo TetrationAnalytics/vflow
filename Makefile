@@ -10,10 +10,10 @@ default: test
 
 test:
 ifeq ($(BUILD_OS),Darwin)
-	go test -count=1 -v `go list ./... | grep -v "vflow/vflow" | grep -v "mirror"` -timeout 1m
+	go test -cover -count=1 `go list ./... | grep -v "vflow/vflow" | grep -v "mirror"` -timeout 1m
 endif
 ifeq ($(BUILD_OS),Linux)
-	go test -count=1 -v `go list ./... | grep -v "mirror"` -timeout 1m
+	go test -cover -count=1 `go list ./... | grep -v "mirror"` -timeout 1m
 endif
 
 bench:
