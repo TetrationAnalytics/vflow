@@ -33,7 +33,7 @@ jobs:
     - name: Build
       run: |
         go build -v ./...
-        make buildg
+        make build
 
     - name: Test
       run: make test
