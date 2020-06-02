@@ -29,6 +29,7 @@ import (
 	"io"
 	"net"
 
+	"github.com/VerizonDigital/vflow/log"
 	"github.com/VerizonDigital/vflow/reader"
 )
 
@@ -61,6 +62,8 @@ type TemplateRecord struct {
 	FieldSpecifiers      []TemplateFieldSpecifier
 	ScopeFieldCount      uint16
 	ScopeFieldSpecifiers []TemplateFieldSpecifier
+	// Length is the total length of the data set this template would decode.
+	Length uint16
 }
 
 // TemplateFieldSpecifier represents field properties
@@ -93,7 +96,9 @@ type SetHeader struct {
 	Length uint16
 }
 
-type nonfatalError error
+type nonfatalError struct {
+	error
+}
 
 var rpcChan = make(chan RPCRequest, 1)
 
@@ -160,12 +165,16 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 		return io.ErrUnexpectedEOF
 	}
 
+	var setID = setHeader.SetID
+	var srcID = msg.Header.DomainID
+	var srcAgentID = msg.AgentID
+
 	var tr TemplateRecord
 	var err error
 	// This check is somewhat redundant with the switch-clause below, but the retrieve() operation should not be executed inside the loop.
-	if setHeader.SetID > 255 {
+	if setID > 255 {
 		var ok bool
-		tr, ok = mem.retrieve(setHeader.SetID, d.raddr, msg.Header.DomainID)
+		tr, ok = mem.retrieve(setID, d.raddr, srcID)
 		if !ok {
 			select {
 			case rpcChan <- RPCRequest{
@@ -174,17 +183,24 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 			}:
 			default:
 			}
-			err = nonfatalError(fmt.Errorf("%s unknown ipfix template id# %d for source ID %d",
-				d.raddr.String(),
-				setHeader.SetID,
-				msg.Header.DomainID,
-			))
+			err = nonfatalError{error: fmt.Errorf("%s unknown ipfix template id# %d for source ID %d",
+				srcAgentID, setID, srcID,
+			)}
+		} else if !tr.validate() {
+			err = nonfatalError{error: fmt.Errorf("%s invalid netflow template id# %d from srcID: %d",
+				srcAgentID, setID, srcID,
+			)}
+		} else {
+			log.Logger.Printf("%s retrieved template id# %d from srcID %d",
+				srcAgentID, setID, srcID,
+			)
 		}
 	}
 
 	// the next set should be greater than 4 bytes otherwise that's padding
-	for err == nil && (int(setHeader.Length)-(d.reader.ReadCount()-startCount) > 4) && d.reader.Len() > 4 {
-		if setId := setHeader.SetID; setId == 2 || setId == 3 {
+	remainingBytes := func() int { return int(setHeader.Length) - (d.reader.ReadCount() - startCount) }
+	for err == nil && remainingBytes() > 4 && d.reader.Len() > 4 {
+		if setID == 2 || setID == 3 {
 			// Template record or template option record
 
 			// Check if only padding is left in this set. A template id of zero indicates padding bytes, which MUST be zero.
@@ -194,7 +210,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 			}
 
 			tr := TemplateRecord{}
-			if setId == 2 {
+			if setID == 2 {
 				err = tr.unmarshal(d.reader)
 			} else {
 				err = tr.unmarshalOpts(d.reader)
@@ -202,10 +218,26 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 			if err == nil {
 				mem.insert(tr.TemplateID, d.raddr, tr, msg.Header.DomainID)
 			}
-		} else if setId >= 4 && setId <= 255 {
+		} else if setID >= 4 && setID <= 255 {
 			// Reserved set, do not read any records
 			break
 		} else {
+			if r := remainingBytes(); r < int(tr.Length) {
+				// In this case, the template/data were probably incorrect/corrupted,
+				// the decode data would not be reliable. Return the error and stop
+				// processing current packet. No need to skip left over bytes,
+				// since current packet should be discarded directly.
+				return fmt.Errorf("not enough bytes to decode ipfix template for "+
+					"SetID %d SrcAgentID %s SrcID %d (template Record: %d, Length: %d): "+
+					"setHeader.Length: %d remaining bytes %d",
+					setID, srcAgentID, srcID, tr.TemplateID, tr.Length,
+					setHeader.Length, r)
+			}
+			if !tr.validate() {
+				return fmt.Errorf("invalid ipfix template for "+
+					"SetID %d SrcAgentID %s SrcID %d (template Record: %d)",
+					setID, srcAgentID, srcID, tr.TemplateID)
+			}
 			// Data set
 			var data []DecodedField
 			data, err = d.decodeData(tr)
@@ -221,8 +253,19 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 	if leftoverBytes > 0 {
 		_, skipErr := d.reader.Read(leftoverBytes)
 		if skipErr != nil {
+			log.Logger.Printf("error while skipping leftover bytes for "+
+				"SetID %d SrcAgentID %s SrcID %d (template Record: %d, Length: %d): "+
+				"setHeader.Length: %d, leftover bytes: %d, startCount: %d, curPointer: %d",
+				setID, srcAgentID, srcID, tr.TemplateID, tr.Length,
+				setHeader.Length, leftoverBytes, startCount, d.reader.ReadCount())
 			err = skipErr
 		}
+	} else if leftoverBytes < 0 {
+		log.Logger.Printf("negative leftover bytes for "+
+			"SetID %d SrcAgentID %s SrcID %d (template Record: %d, Length: %d): "+
+			"setHeader.Length: %d, leftover: %d, startCount: %d, curPointer: %d",
+			setID, srcAgentID, srcID, tr.TemplateID, tr.Length,
+			setHeader.Length, leftoverBytes, startCount, d.reader.ReadCount())
 	}
 	return err
 }
@@ -415,6 +458,7 @@ func (tr *TemplateRecord) unmarshal(r *reader.Reader) error {
 			return err
 		}
 		tr.FieldSpecifiers = append(tr.FieldSpecifiers, tf)
+		tr.Length += tf.Length
 	}
 	return nil
 }
@@ -465,6 +509,7 @@ func (tr *TemplateRecord) unmarshalOpts(r *reader.Reader) error {
 			return err
 		}
 		tr.ScopeFieldSpecifiers = append(tr.ScopeFieldSpecifiers, tf)
+		tr.Length += tf.Length
 	}
 
 	for i := th.FieldCount - th.ScopeFieldCount; i > 0; i-- {
@@ -472,8 +517,16 @@ func (tr *TemplateRecord) unmarshalOpts(r *reader.Reader) error {
 			return err
 		}
 		tr.FieldSpecifiers = append(tr.FieldSpecifiers, tf)
+		tr.Length += tf.Length
 	}
 	return nil
+}
+
+func (tr *TemplateRecord) validate() bool {
+	if len(tr.FieldSpecifiers) == 0 && len(tr.ScopeFieldSpecifiers) == 0 {
+		return false
+	}
+	return true
 }
 
 func (d *Decoder) getDataLength(fieldSpecifierLen uint16, t FieldType) (uint16, error) {
