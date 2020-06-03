@@ -494,6 +494,11 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 					setID, srcAgentID, srcID, tr.TemplateID, tr.Length,
 					setHeader.Length, r)
 			}
+			if !tr.validate() {
+				return fmt.Errorf("invalid netflow template for "+
+					"SetID %d SrcAgentID %s SrcID %d (template Record: %d)",
+					setID, srcAgentID, srcID, tr.TemplateID)
+			}
 			// Data set
 			var data []DecodedField
 			data, err = d.decodeData(tr)
