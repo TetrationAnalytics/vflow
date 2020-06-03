@@ -249,7 +249,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 
 	// Skip the rest of the set in order to properly continue with the next set
 	// This is necessary if the set is padded, has a reserved set ID, or a nonfatal error occurred
-	leftoverBytes := int(setHeader.Length) - (d.reader.ReadCount() - startCount)
+	leftoverBytes := remainingBytes()
 	if leftoverBytes > 0 {
 		_, skipErr := d.reader.Read(leftoverBytes)
 		if skipErr != nil {
