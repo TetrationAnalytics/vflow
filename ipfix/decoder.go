@@ -187,7 +187,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 				srcAgentID, setID, srcID,
 			)}
 		} else if !tr.validate() {
-			err = nonfatalError{error: fmt.Errorf("%s invalid netflow template id# %d from srcID: %d",
+			err = nonfatalError{error: fmt.Errorf("%s invalid ipfix template id# %d from srcID: %d",
 				srcAgentID, setID, srcID,
 			)}
 		} else {
