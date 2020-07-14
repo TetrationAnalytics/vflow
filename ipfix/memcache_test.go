@@ -179,7 +179,7 @@ func TestMemCache_RemoveExpiredTemplates(t *testing.T) {
 	stopped := make(chan bool)
 	go func() {
 		defer close(stopped)
-		mCache.RefreshTemplates(removeCtx, 0, 1, tempCacheFile)
+		mCache.InvalidateTemplateCache(removeCtx, 0, 1, tempCacheFile)
 	}()
 	time.Sleep(2 * time.Second)
 	removeCancel()

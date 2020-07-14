@@ -156,10 +156,10 @@ func (m MemCache) Dump(cacheFile string) error {
 	return nil
 }
 
-// RefreshTemplates start periodic check to delete expired template
+// InvalidateTemplateCache start periodic check to delete expired template
 // based on specified expiration in seconds and dump the cache to file after
 // deletion if a dump file is provided. It should be call in a goroutine.
-func (m MemCache) RefreshTemplates(ctx context.Context, interval, expiration int64, dump string) {
+func (m MemCache) InvalidateTemplateCache(ctx context.Context, interval, expiration int64, dump string) {
 	if interval < 1 {
 		interval = 1
 	}
