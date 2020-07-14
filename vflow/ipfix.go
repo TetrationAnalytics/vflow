@@ -225,7 +225,7 @@ LOOP:
 			}
 		}
 
-		d := ipfix.NewDecoder(msg.raddr.IP, msg.body)
+		d := ipfix.NewDecoder(msg.raddr.IP, uint16(msg.raddr.Port), msg.body)
 		if decodedMsg, err = d.Decode(mCache); err != nil {
 			logger.Println(err)
 			// in case ipfix message header couldn't decode
