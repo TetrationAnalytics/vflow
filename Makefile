@@ -10,7 +10,7 @@ default: test
 
 test:
 ifeq ($(BUILD_OS),Darwin)
-	go test -cover -count=1 `go list ./... | grep -v "vflow/vflow" | grep -v "mirror"` -timeout 1m
+	go test -cover -count=1 `go list ./... | grep -v "vflow/vflow" | grep -v "mirror"` -timeout 1m --coverprofile=coverage.txt
 endif
 ifeq ($(BUILD_OS),Linux)
 	go test -cover -count=1 `go list ./... | grep -v "mirror"` -timeout 1m
@@ -83,3 +83,21 @@ rpm: build
 	apt-get install rpm
 	rpmbuild -ba ${RPMPATH}/SPECS/vflow.spec --define "_topdir `pwd`/scripts/rpmbuild"
 	sed -i 's/${VERSION}/%VERSION%/' ${RPMPATH}/SPECS/vflow.spec
+
+###########################################################################
+# sonar-scanner configuration section
+ifdef ghprbSourceBranch
+	SONAR_BRANCH := -Dsonar.pullrequest.branch=$(ghprbSourceBranch) -Dsonar.pullrequest.key=$(ghprbPullId) -Dsonar.pullrequest.base=$(ghprbTargetBranch)
+else
+	SONAR_BRANCH := -Dsonar.branch.name=$(shell git rev-parse --abbrev-ref HEAD)
+endif
+
+SONAR_EXE=sonar-scanner
+SONAR_PRO=-Dproject.settings=sonar-project.properties
+SONAR_BAS=-Dsonar.projectBaseDir=.
+SONAR_CMD=${SONAR_EXE} ${SONAR_PRO} ${SONAR_BAS} ${SONAR_BRANCH}
+sonar:
+	rm -rf $(BUILD_DIR)
+	rm -rf $(LOCAL_GOPATH_DIR)
+	${SONAR_CMD}
+###########################################################################
