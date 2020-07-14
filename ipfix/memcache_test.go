@@ -24,7 +24,10 @@ package ipfix
 
 import (
 	"context"
+	"io/ioutil"
 	"net"
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 	"time"
@@ -158,13 +161,25 @@ func TestMemCache_RemoveExpiredTemplates(t *testing.T) {
 		t.Error("expected template id#:310, got", v.TemplateID)
 	}
 
+	tempCacheDir, err := ioutil.TempDir(".", "")
+	if err != nil {
+		t.Error("failed to create temp cache directory.")
+		return
+	}
+	defer os.RemoveAll(tempCacheDir)
+	tempCacheFile := filepath.Join(tempCacheDir, "dump-mem-cache")
+
+	if _, err = os.Stat(tempCacheFile); !os.IsNotExist(err) {
+		t.Errorf("expect cache file %s not exist before test, %+v", tempCacheFile, err)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	removeCtx, removeCancel := context.WithCancel(ctx)
 	stopped := make(chan bool)
 	go func() {
 		defer close(stopped)
-		mCache.RemoveExpiredTemplates(removeCtx, 0, 1)
+		mCache.RefreshTemplates(removeCtx, 0, 1, tempCacheFile)
 	}()
 	time.Sleep(2 * time.Second)
 	removeCancel()
@@ -172,7 +187,10 @@ func TestMemCache_RemoveExpiredTemplates(t *testing.T) {
 	case <-stopped:
 		v, ok = mCache.retrieve(310, ip, port, 512)
 		if ok {
-			t.Error("expected mCache retrieve status false, got", ok)
+			t.Errorf("expected mCache retrieve status false, got %v", ok)
+		}
+		if _, err = os.Stat(tempCacheFile); os.IsNotExist(err) {
+			t.Errorf("expect cache file %s to exist, %s", tempCacheFile, err.Error())
 		}
 	case <-ctx.Done():
 		t.Error(ctx.Err())

@@ -32,6 +32,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/VerizonDigital/vflow/log"
 )
 
 var shardNo = 32
@@ -154,9 +156,10 @@ func (m MemCache) Dump(cacheFile string) error {
 	return nil
 }
 
-// RemoveExpiredTemplates start periodic check to delete expired template
-// on specific interval and expiration in seconds. It should be call in a goroutine.
-func (m MemCache) RemoveExpiredTemplates(ctx context.Context, interval, expiration int64) {
+// RefreshTemplates start periodic check to delete expired template
+// based on specified expiration in seconds and dump the cache to file after
+// deletion if a dump file is provided. It should be call in a goroutine.
+func (m MemCache) RefreshTemplates(ctx context.Context, interval, expiration int64, dump string) {
 	if interval < 1 {
 		interval = 1
 	}
@@ -169,6 +172,12 @@ func (m MemCache) RemoveExpiredTemplates(ctx context.Context, interval, expirati
 		case <-ticker.C:
 			for _, shard := range m {
 				shard.removeExpiredTemplate(expiration)
+			}
+			if dump != "" {
+				err := m.Dump(dump)
+				if err != nil {
+					log.Logger.Printf("Error in dumping memCache to file, %v", err)
+				}
 			}
 		}
 	}
