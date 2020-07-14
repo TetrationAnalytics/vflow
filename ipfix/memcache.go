@@ -23,6 +23,7 @@
 package ipfix
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"hash/fnv"
@@ -79,16 +80,19 @@ func GetCache(cacheFile string) MemCache {
 	return m
 }
 
-func (m MemCache) getShard(id uint16, addr net.IP, srcID uint32) (*TemplatesShard, uint32) {
+func (m MemCache) getShard(id uint16, addr net.IP, srcID uint32, srcPort uint16) (*TemplatesShard, uint32) {
 	bSrcID := make([]byte, 4)
 	btemplateID := make([]byte, 2)
+	bSrcPort := make([]byte, 2)
 	binary.BigEndian.PutUint32(bSrcID, srcID)
 	binary.BigEndian.PutUint16(btemplateID, id)
+	binary.BigEndian.PutUint16(bSrcPort, srcPort)
 
 	var key []byte
 	key = append(key, addr...)
 	key = append(key, bSrcID...)
 	key = append(key, btemplateID...)
+	key = append(key, bSrcPort...)
 
 	hash := fnv.New32()
 	hash.Write(key)
@@ -96,15 +100,15 @@ func (m MemCache) getShard(id uint16, addr net.IP, srcID uint32) (*TemplatesShar
 	return m[uint(hSum32)%uint(shardNo)], hSum32
 }
 
-func (m MemCache) insert(id uint16, addr net.IP, tr TemplateRecord, srcID uint32) {
-	shard, key := m.getShard(id, addr, srcID)
+func (m MemCache) insert(id uint16, addr net.IP, srcPort uint16, tr TemplateRecord, srcID uint32) {
+	shard, key := m.getShard(id, addr, srcID, srcPort)
 	shard.Lock()
 	defer shard.Unlock()
 	shard.Templates[key] = Data{tr, time.Now().Unix()}
 }
 
-func (m MemCache) retrieve(id uint16, addr net.IP, srcID uint32) (TemplateRecord, bool) {
-	shard, key := m.getShard(id, addr, srcID)
+func (m MemCache) retrieve(id uint16, addr net.IP, srcPort uint16, srcID uint32) (TemplateRecord, bool) {
+	shard, key := m.getShard(id, addr, srcID, srcPort)
 	shard.RLock()
 	defer shard.RUnlock()
 	v, ok := shard.Templates[key]
@@ -148,4 +152,34 @@ func (m MemCache) Dump(cacheFile string) error {
 	}
 
 	return nil
+}
+
+// RemoveExpiredTemplates start periodic check to delete expired template
+// on specific interval and expiration in seconds. It should be call in a goroutine.
+func (m MemCache) RemoveExpiredTemplates(ctx context.Context, interval, expiration int64) {
+	if interval < 1 {
+		interval = 1
+	}
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for _, shard := range m {
+				shard.removeExpiredTemplate(expiration)
+			}
+		}
+	}
+}
+
+func (t *TemplatesShard) removeExpiredTemplate(expiration int64) {
+	t.Lock()
+	defer t.Unlock()
+	for key, template := range t.Templates {
+		if time.Now().Unix()-template.Timestamp > expiration {
+			delete(t.Templates, key)
+		}
+	}
 }

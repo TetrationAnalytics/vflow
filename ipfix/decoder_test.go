@@ -132,9 +132,10 @@ func init() {
 
 func TestDecodeNoData(t *testing.T) {
 	ip := net.ParseIP("127.0.0.1")
+	port := uint16(0)
 	mCache := GetCache("cache.file")
 	body := []byte{}
-	d := NewDecoder(ip, body)
+	d := NewDecoder(ip, port, body)
 	if _, err := d.Decode(mCache); err == nil {
 		t.Error("expected err but nothing")
 	}
@@ -142,8 +143,9 @@ func TestDecodeNoData(t *testing.T) {
 
 func TestDecodeTemplate(t *testing.T) {
 	ip := net.ParseIP("127.0.0.1")
+	port := uint16(0)
 	mCache := GetCache("cache.file")
-	d := NewDecoder(ip, tpl)
+	d := NewDecoder(ip, port, tpl)
 	_, err := d.Decode(mCache)
 	if err != nil {
 		t.Error("unexpected error happened:", err)
@@ -152,8 +154,9 @@ func TestDecodeTemplate(t *testing.T) {
 
 func TestDecodeOptsTemplate(t *testing.T) {
 	ip := net.ParseIP("127.0.0.1")
+	port := uint16(0)
 	mCache := GetCache("cache.file")
-	d := NewDecoder(ip, optsTpl)
+	d := NewDecoder(ip, port, optsTpl)
 	_, err := d.Decode(mCache)
 	if err != nil {
 		t.Error("unexpected error happened:", err)
@@ -162,26 +165,29 @@ func TestDecodeOptsTemplate(t *testing.T) {
 
 func BenchmarkDecodeTemplate(b *testing.B) {
 	ip := net.ParseIP("127.0.0.1")
+	port := uint16(0)
 	mCache := GetCache("cache.file")
 	for i := 0; i < b.N; i++ {
-		d := NewDecoder(ip, tpl)
+		d := NewDecoder(ip, port, tpl)
 		d.Decode(mCache)
 	}
 }
 
 func BenchmarkDecodeOptsTemplate(b *testing.B) {
 	ip := net.ParseIP("127.0.0.1")
+	port := uint16(0)
 	mCache := GetCache("cache.file")
 	for i := 0; i < b.N; i++ {
-		d := NewDecoder(ip, optsTpl)
+		d := NewDecoder(ip, port, optsTpl)
 		d.Decode(mCache)
 	}
 }
 
 func TestMultiMessage(t *testing.T) {
 	ip := net.ParseIP("127.0.0.1")
+	port := uint16(0)
 	mCache := GetCache("cache.file")
-	d := NewDecoder(ip, multiMessage)
+	d := NewDecoder(ip, port, multiMessage)
 	r, err := d.Decode(mCache)
 	if err != nil {
 		t.Error("unexpected error happened:", err)
@@ -198,8 +204,9 @@ func TestMultiMessage(t *testing.T) {
 
 func TestUnknownDatasetsMessage(t *testing.T) {
 	ip := net.ParseIP("127.0.0.1")
+	port := uint16(0)
 	mCache := GetCache("cache.file")
-	d := NewDecoder(ip, unknownDatasetMessage)
+	d := NewDecoder(ip, port, unknownDatasetMessage)
 	r, err := d.Decode(mCache)
 	if l := len(r.DataSets); l != 0 {
 		t.Error("Did not expect any result datasets, but got", l)

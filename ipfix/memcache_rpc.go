@@ -56,8 +56,9 @@ type RPCConfig struct {
 
 // RPCRequest represents RPC request
 type RPCRequest struct {
-	ID uint16
-	IP net.IP
+	ID    uint16
+	IP    net.IP
+	Port  uint16
 	SrcID uint32
 }
 
@@ -92,7 +93,7 @@ func NewRPC(mCache MemCache) *IRPC {
 func (r *IRPC) Get(req RPCRequest, resp *TemplateRecord) error {
 	var ok bool
 
-	*resp, ok = r.mCache.retrieve(req.ID, req.IP, req.SrcID)
+	*resp, ok = r.mCache.retrieve(req.ID, req.IP, req.Port, req.SrcID)
 	if !ok {
 		return errNotAvail
 	}
@@ -169,7 +170,7 @@ func RPC(m MemCache, config *RPCConfig) {
 				continue
 			}
 
-			m.insert(req.ID, req.IP, *tr, req.SrcID)
+			m.insert(req.ID, req.IP, req.Port, *tr, req.SrcID)
 			break
 		}
 

@@ -36,6 +36,7 @@ import (
 // Decoder represents IPFIX payload and remote address
 type Decoder struct {
 	raddr  net.IP
+	rport  uint16
 	reader *reader.Reader
 }
 
@@ -103,8 +104,8 @@ type nonfatalError struct {
 var rpcChan = make(chan RPCRequest, 1)
 
 // NewDecoder constructs a decoder
-func NewDecoder(raddr net.IP, b []byte) *Decoder {
-	return &Decoder{raddr, reader.NewReader(b)}
+func NewDecoder(raddr net.IP, rport uint16, b []byte) *Decoder {
+	return &Decoder{raddr: raddr, rport: rport, reader: reader.NewReader(b)}
 }
 
 // Decode decodes the IPFIX raw data
@@ -174,7 +175,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 	// This check is somewhat redundant with the switch-clause below, but the retrieve() operation should not be executed inside the loop.
 	if setID > 255 {
 		var ok bool
-		tr, ok = mem.retrieve(setID, d.raddr, srcID)
+		tr, ok = mem.retrieve(setID, d.raddr, d.rport, srcID)
 		if !ok {
 			select {
 			case rpcChan <- RPCRequest{
@@ -216,7 +217,7 @@ func (d *Decoder) decodeSet(mem MemCache, msg *Message) error {
 				err = tr.unmarshalOpts(d.reader)
 			}
 			if err == nil {
-				mem.insert(tr.TemplateID, d.raddr, tr, msg.Header.DomainID)
+				mem.insert(tr.TemplateID, d.raddr, d.rport, tr, msg.Header.DomainID)
 			}
 		} else if setID >= 4 && setID <= 255 {
 			// Reserved set, do not read any records
