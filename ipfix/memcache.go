@@ -82,19 +82,19 @@ func GetCache(cacheFile string) MemCache {
 	return m
 }
 
-func (m MemCache) getShard(id uint16, addr net.IP, srcID uint32, srcPort uint16) (*TemplatesShard, uint32) {
+func (m MemCache) getShard(id uint16, addr net.IP, port uint16, srcID uint32) (*TemplatesShard, uint32) {
 	bSrcID := make([]byte, 4)
 	btemplateID := make([]byte, 2)
-	bSrcPort := make([]byte, 2)
+	bPort := make([]byte, 2)
 	binary.BigEndian.PutUint32(bSrcID, srcID)
 	binary.BigEndian.PutUint16(btemplateID, id)
-	binary.BigEndian.PutUint16(bSrcPort, srcPort)
+	binary.BigEndian.PutUint16(bPort, port)
 
 	var key []byte
 	key = append(key, addr...)
 	key = append(key, bSrcID...)
 	key = append(key, btemplateID...)
-	key = append(key, bSrcPort...)
+	key = append(key, bPort...)
 
 	hash := fnv.New32()
 	hash.Write(key)
@@ -103,14 +103,14 @@ func (m MemCache) getShard(id uint16, addr net.IP, srcID uint32, srcPort uint16)
 }
 
 func (m MemCache) insert(id uint16, addr net.IP, srcPort uint16, tr TemplateRecord, srcID uint32) {
-	shard, key := m.getShard(id, addr, srcID, srcPort)
+	shard, key := m.getShard(id, addr, srcPort, srcID)
 	shard.Lock()
 	defer shard.Unlock()
 	shard.Templates[key] = Data{tr, time.Now().Unix()}
 }
 
 func (m MemCache) retrieve(id uint16, addr net.IP, srcPort uint16, srcID uint32) (TemplateRecord, bool) {
-	shard, key := m.getShard(id, addr, srcID, srcPort)
+	shard, key := m.getShard(id, addr, srcPort, srcID)
 	shard.RLock()
 	defer shard.RUnlock()
 	v, ok := shard.Templates[key]
