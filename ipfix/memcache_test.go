@@ -138,7 +138,7 @@ func TestTemplatesShard_removeExpiredTemplate(t *testing.T) {
 			shard := &TemplatesShard{
 				Templates: tt.fields.Templates,
 			}
-			shard.removeExpiredTemplate(tt.args.expiration)
+			assert.Equal(t, len(tt.fields.Templates)-1, shard.removeExpiredTemplate(tt.args.expiration))
 			assert.Equal(t, 1, len(shard.Templates))
 		})
 	}

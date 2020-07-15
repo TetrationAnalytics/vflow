@@ -170,9 +170,11 @@ func (m MemCache) InvalidateTemplateCache(ctx context.Context, interval, expirat
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			count := 0
 			for _, shard := range m {
-				shard.removeExpiredTemplate(expiration)
+				count += shard.removeExpiredTemplate(expiration)
 			}
+			log.Logger.Printf("ipfix memCache clean up %d templates", count)
 			if dump != "" {
 				err := m.Dump(dump)
 				if err != nil {
@@ -183,12 +185,15 @@ func (m MemCache) InvalidateTemplateCache(ctx context.Context, interval, expirat
 	}
 }
 
-func (t *TemplatesShard) removeExpiredTemplate(expiration int64) {
+func (t *TemplatesShard) removeExpiredTemplate(expiration int64) int {
 	t.Lock()
 	defer t.Unlock()
+	count := 0
 	for key, template := range t.Templates {
 		if time.Now().Unix()-template.Timestamp > expiration {
 			delete(t.Templates, key)
+			count += 1
 		}
 	}
+	return count
 }
