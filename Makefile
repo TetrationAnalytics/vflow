@@ -10,7 +10,7 @@ default: test
 
 test:
 ifeq ($(BUILD_OS),Darwin)
-	go test -cover -count=1 `go list ./... | grep -v "vflow/vflow" | grep -v "mirror"` -timeout 1m --coverprofile=coverage.txt
+	go test -cover -count=1 `go list ./... | grep -v "vflow/vflow" | grep -v "mirror"` -timeout 1m
 endif
 ifeq ($(BUILD_OS),Linux)
 	go test -cover -count=1 `go list ./... | grep -v "mirror"` -timeout 1m
