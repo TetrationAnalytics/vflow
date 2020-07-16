@@ -23,6 +23,7 @@
 package ipfix
 
 import (
+	"context"
 	"encoding/binary"
 	"encoding/json"
 	"hash/fnv"
@@ -31,6 +32,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/VerizonDigital/vflow/log"
 )
 
 var shardNo = 32
@@ -79,16 +82,19 @@ func GetCache(cacheFile string) MemCache {
 	return m
 }
 
-func (m MemCache) getShard(id uint16, addr net.IP, srcID uint32) (*TemplatesShard, uint32) {
+func (m MemCache) getShard(id uint16, addr net.IP, port uint16, srcID uint32) (*TemplatesShard, uint32) {
 	bSrcID := make([]byte, 4)
 	btemplateID := make([]byte, 2)
+	bPort := make([]byte, 2)
 	binary.BigEndian.PutUint32(bSrcID, srcID)
 	binary.BigEndian.PutUint16(btemplateID, id)
+	binary.BigEndian.PutUint16(bPort, port)
 
 	var key []byte
 	key = append(key, addr...)
 	key = append(key, bSrcID...)
 	key = append(key, btemplateID...)
+	key = append(key, bPort...)
 
 	hash := fnv.New32()
 	hash.Write(key)
@@ -96,15 +102,15 @@ func (m MemCache) getShard(id uint16, addr net.IP, srcID uint32) (*TemplatesShar
 	return m[uint(hSum32)%uint(shardNo)], hSum32
 }
 
-func (m MemCache) insert(id uint16, addr net.IP, tr TemplateRecord, srcID uint32) {
-	shard, key := m.getShard(id, addr, srcID)
+func (m MemCache) insert(id uint16, addr net.IP, srcPort uint16, tr TemplateRecord, srcID uint32) {
+	shard, key := m.getShard(id, addr, srcPort, srcID)
 	shard.Lock()
 	defer shard.Unlock()
 	shard.Templates[key] = Data{tr, time.Now().Unix()}
 }
 
-func (m MemCache) retrieve(id uint16, addr net.IP, srcID uint32) (TemplateRecord, bool) {
-	shard, key := m.getShard(id, addr, srcID)
+func (m MemCache) retrieve(id uint16, addr net.IP, srcPort uint16, srcID uint32) (TemplateRecord, bool) {
+	shard, key := m.getShard(id, addr, srcPort, srcID)
 	shard.RLock()
 	defer shard.RUnlock()
 	v, ok := shard.Templates[key]
@@ -148,4 +154,46 @@ func (m MemCache) Dump(cacheFile string) error {
 	}
 
 	return nil
+}
+
+// InvalidateTemplateCache start periodic check to delete expired template
+// based on specified expiration in seconds and dump the cache to file after
+// deletion if a dump file is provided. It should be call in a goroutine.
+func (m MemCache) InvalidateTemplateCache(ctx context.Context, interval, expiration int64, dump string) {
+	if interval < 1 {
+		interval = 1
+	}
+	ticker := time.NewTicker(time.Duration(interval) * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			count := 0
+			for _, shard := range m {
+				count += shard.removeExpiredTemplate(expiration)
+			}
+			log.Logger.Printf("ipfix memCache clean up %d templates", count)
+			if dump != "" {
+				err := m.Dump(dump)
+				if err != nil {
+					log.Logger.Printf("Error in dumping memCache to file, %v", err)
+				}
+			}
+		}
+	}
+}
+
+func (t *TemplatesShard) removeExpiredTemplate(expiration int64) int {
+	t.Lock()
+	defer t.Unlock()
+	count := 0
+	for key, template := range t.Templates {
+		if time.Now().Unix()-template.Timestamp > expiration {
+			delete(t.Templates, key)
+			count += 1
+		}
+	}
+	return count
 }
