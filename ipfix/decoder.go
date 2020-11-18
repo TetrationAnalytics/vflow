@@ -538,7 +538,7 @@ func (d *Decoder) getDataLength(fieldSpecifierLen uint16, t FieldType) (uint16, 
 
 	r := d.reader
 
-	if (t == String || t == OctetArray) && (fieldSpecifierLen == 65535) {
+	if (t == String || t == OctetArray || t == Unknown) && (fieldSpecifierLen == 65535) {
 		var len8 uint8
 		len8, err = r.Uint8()
 		if err != nil {
@@ -564,6 +564,7 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		err        error
 		b          []byte
 		readLength uint16
+		fieldType  FieldType
 	)
 
 	r := d.reader
@@ -574,11 +575,13 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 			tr.ScopeFieldSpecifiers[i].ElementID,
 		}]
 
-		if !ok {
-			continue
+		if ok {
+			fieldType = m.Type
+		} else {
+			fieldType = Unknown
 		}
 
-		readLength, err = d.getDataLength(tr.ScopeFieldSpecifiers[i].Length, m.Type)
+		readLength, err = d.getDataLength(tr.ScopeFieldSpecifiers[i].Length, fieldType)
 		if err != nil {
 			return nil, err
 		}
@@ -586,6 +589,10 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		b, err = r.Read(int(readLength))
 		if err != nil {
 			return nil, err
+		}
+
+		if !ok {
+			continue
 		}
 
 		fields = append(fields, DecodedField{
@@ -604,11 +611,13 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 			tr.FieldSpecifiers[i].ElementID,
 		}]
 
-		if !ok {
-			continue
+		if ok {
+			fieldType = m.Type
+		} else {
+			fieldType = Unknown
 		}
 
-		readLength, err = d.getDataLength(tr.FieldSpecifiers[i].Length, m.Type)
+		readLength, err = d.getDataLength(tr.FieldSpecifiers[i].Length, fieldType)
 		if err != nil {
 			return nil, err
 		}
@@ -616,6 +625,10 @@ func (d *Decoder) decodeData(tr TemplateRecord) ([]DecodedField, error) {
 		b, err = r.Read(int(readLength))
 		if err != nil {
 			return nil, err
+		}
+
+		if !ok {
+			continue
 		}
 
 		fields = append(fields, DecodedField{
